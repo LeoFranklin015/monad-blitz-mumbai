@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 
 /// @title SettlementOracle
@@ -12,7 +12,7 @@ import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 ///    settlement price expensive to push around compared with a single print.
 /// In production, reporters relay Pyth or Chainlink updates. A Pyth adapter can implement the
 /// same interface by reading the pull feed and accumulating samples the same way.
-contract SettlementOracle is IPriceOracle, Ownable {
+contract SettlementOracle is IPriceOracle, Ownable2Step {
     struct Acc {
         uint256 sum;
         uint256 count;

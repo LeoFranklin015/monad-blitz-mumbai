@@ -112,6 +112,7 @@ describe("HedgedMaker: fill and hedge in one transaction", function () {
     const hm = await (await ethers.getContractFactory("HedgedMaker")).deploy(
       await protocol.getAddress(), await dex.getAddress(), owner.address, owner.address
     );
+    await hm.setHook(true);
     const H = await hm.getAddress();
     await usdc.mint(H, usd(10_000));
     await hm.depositToProtocol(U, usd(200));
@@ -175,7 +176,7 @@ describe("Pyth oracle and xStock corporate actions", function () {
     const { protocol, owner, N } = ctx;
     const pyth = await (await ethers.getContractFactory("MockPyth")).deploy();
     const po = await (await ethers.getContractFactory("PythSettlementOracle")).deploy(await pyth.getAddress(), owner.address, WINDOW);
-    await po.setFeed(N, ID, true, 0);
+    await po.setFeed(N, ID, N, 0, 0);
     await protocol.setOracle(await po.getAddress());
     return { pyth, po };
   }
@@ -235,5 +236,25 @@ describe("Batch quoting", function () {
     expect(asks.length).to.equal(1);
     expect(bids.length).to.equal(1);
     expect((await protocol.quotesOf(makerA.address)).length).to.equal(4);
+  });
+});
+
+describe("Pause", function () {
+  it("stops new risk but never blocks exits or batch cancels", async function () {
+    const ctx = await loadFixture(deployAll);
+    const { protocol, makerB, buyer, other, N, callId } = ctx;
+    await protocol.connect(makerB).deposit(N, sh(20));
+    await protocol.connect(makerB).postQuote(callId, usd("1.70"), sh(10));
+    await protocol.connect(makerB).postQuote(callId, usd("1.80"), sh(10));
+    await protocol.connect(buyer).buy(callId, sh(5), usd(9), buyer.address);
+    await expect(protocol.connect(other).pause()).to.be.revertedWithCustomError(protocol, "NotGuardian");
+    await protocol.pause();
+    await expect(protocol.connect(buyer).buy(callId, sh(1), usd(2), buyer.address)).to.be.revertedWithCustomError(protocol, "IsPaused");
+    await expect(protocol.connect(makerB).postQuote(callId, usd(2), sh(1))).to.be.revertedWithCustomError(protocol, "IsPaused");
+    const ids = await protocol.quotesOf(makerB.address);
+    await expect(protocol.connect(makerB).updateQuotes([ids[0]], [usd(2)], [sh(5)])).to.be.revertedWithCustomError(protocol, "IsPaused");
+    await protocol.connect(makerB).updateQuotes([...ids], [0, 0], [0, 0]); // batch cancel still works
+    await protocol.connect(buyer).exercise(callId, sh(5)); // exits still work
+    await protocol.unpause();
   });
 });

@@ -1,0 +1,49 @@
+# Production:  docker compose up -d --build                 (backend + web against the network in backend/.env)
+# Local stack: docker compose --profile local up --build     (adds a dev chain and deploys to it first)
+name: weekend-options
+services:
+  chain:
+    profiles: ["local"]
+    build: { context: ., dockerfile: docker/contracts.Dockerfile }
+    environment: { CHAIN_HOST: 0.0.0.0 }
+    ports: ["8545:8545"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8545',{method:'POST',headers:{'content-type':'application/json'},body:'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\",\"params\":[]}'}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 5s
+      retries: 20
+
+  deploy:
+    profiles: ["local"]
+    build: { context: ., dockerfile: docker/contracts.Dockerfile }
+    command: ["npm", "run", "deploy:local", "-w", "@weekend-options/contracts"]
+    environment: { LOCAL_RPC: "http://chain:8545" }
+    volumes: ["./deployments:/app/deployments", "./web/public:/app/web/public"]
+    depends_on: { chain: { condition: service_healthy } }
+
+  backend:
+    build: { context: ., dockerfile: docker/backend.Dockerfile }
+    env_file: [{ path: backend/.env, required: false }]
+    environment:
+      NETWORK: ${NETWORK:-localhost}
+      RPC_URL: ${RPC_URL:-}
+    volumes: ["./deployments:/app/deployments:ro", "backend-data:/data"]
+    restart: unless-stopped
+    stop_grace_period: 90s # makers cancel every quote on SIGTERM before exiting
+    depends_on:
+      deploy: { condition: service_completed_successfully, required: false }
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        VITE_NETWORK: ${NETWORK:-localhost}
+        VITE_JAW_API_KEY: ${VITE_JAW_API_KEY:-}
+        VITE_PAYMASTER_URL: ${VITE_PAYMASTER_URL:-}
+    ports: ["${WEB_PORT:-8080}:80"]
+    volumes: ["./deployments:/usr/share/nginx/html/deployments:ro"]
+    restart: unless-stopped
+    depends_on: [backend]
+
+volumes:
+  backend-data:

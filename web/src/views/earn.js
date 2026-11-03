@@ -1,6 +1,6 @@
 import { D, S, C, call, usd, sh, fromUsd, fromSh, liveSeries, expiriesOf, seriesById, seriesLabel, collateral } from "../chain.js";
 import { W, sendCalls, approvals } from "../wallet.js";
-import { PRODUCTS } from "../config.js";
+import { PRODUCTS, SLIPPAGE_BPS } from "../config.js";
 import { $, html, fmt, act, on } from "../ui.js";
 import { openConnect } from "../account.js";
 
@@ -88,7 +88,7 @@ export function earn(root, refreshAll) {
     $("#hit", el).onclick = async () => {
       if (!W.address) return openConnect();
       const [gross] = await C.protocol().quoteSell(s.id, sh(E.amount));
-      const minNet = (gross * 99n) / 100n; // allow for repricing between now and inclusion
+      const minNet = (gross * (10000n - SLIPPAGE_BPS)) / 10000n; // allow for repricing between now and inclusion
       await act("Writing and selling", async () => {
         await sendCalls([...(await depositCalls()), call(D.protocol, "OptionsProtocol", "sell", [s.id, sh(E.amount), minNet, true])]);
       }, refreshAll);

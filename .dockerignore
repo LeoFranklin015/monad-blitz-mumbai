@@ -1,0 +1,10 @@
+**/node_modules
+**/.env
+.git
+contracts/cache
+contracts/artifacts
+contracts/typechain-types
+web/dist
+web/public/deployments
+backend/data
+deployments/*.json

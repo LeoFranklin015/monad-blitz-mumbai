@@ -2,7 +2,9 @@ import "./style.css";
 import { load, loadSeries, refreshMarket, S, D } from "./chain.js";
 import { W, onChange, initJaw } from "./wallet.js";
 import { renderAccount, setRefresh } from "./account.js";
-import { $, $$, toast } from "./ui.js";
+import { $, $$, toast, setErrorAbis } from "./ui.js";
+import { ethers } from "ethers";
+import { ABI } from "./chain.js";
 import { trade } from "./views/trade.js";
 import { earn } from "./views/earn.js";
 import { protect } from "./views/protect.js";
@@ -46,6 +48,7 @@ async function boot() {
     $("#view").innerHTML = `<div class="card">${e.message}</div>`;
     return;
   }
+  setErrorAbis(Object.values(ABI).map((a) => new ethers.Interface(a)));
   await initJaw();
   try {
     await refreshMarket();

@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {OptionsProtocol} from "../core/OptionsProtocol.sol";
 import {IFillHook} from "../interfaces/IFillHook.sol";
@@ -17,7 +17,7 @@ import {IDexRouter} from "../interfaces/IDexRouter.sol";
 /// That is what lets it quote tighter than a maker who hedges a block later.
 /// If the hedge cannot execute (no inventory, bad price), the fill still goes through and the
 /// maker emits HedgeSkipped; buyers are never blocked by a maker's hedge.
-contract HedgedMaker is IFillHook, Ownable {
+contract HedgedMaker is IFillHook, Ownable2Step {
     using SafeERC20 for IERC20;
 
     OptionsProtocol public immutable protocol;
@@ -40,7 +40,11 @@ contract HedgedMaker is IFillHook, Ownable {
         usdc = protocol_.usdc();
         dex = dex_;
         operator = operator_;
-        protocol_.setFillHook(true);
+    }
+
+    /// @notice Register for fill callbacks. Called once after deploy (a contract has no code inside its constructor).
+    function setHook(bool on) external onlyOwner {
+        protocol.setFillHook(on);
     }
 
     modifier onlyOperator() {

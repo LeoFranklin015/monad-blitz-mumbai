@@ -6,9 +6,11 @@
 //  - roll a new weekly expiry with a fresh strike grid before the last one runs out
 //  - liquidate unhealthy ShieldedLender loans
 import { ethers } from "ethers";
-import { D, config, KIND } from "../config.js";
+import { D, config, KIND, requireKey } from "../config.js";
 import { contracts, signer, send, usdTo, provider, log } from "../lib/chain.js";
 import { state, refreshSeries, latestGapRounds } from "../lib/market.js";
+import { index, sync } from "../lib/indexer.js";
+import { metrics } from "../lib/obs.js";
 
 const STRIKE_STEPS = [-0.1, -0.05, -0.025, 0, 0.025, 0.05, 0.1];
 const SPREAD_LEGS = [[0.025, 0.075], [0.05, 0.1]];
@@ -19,27 +21,16 @@ const roundStrike = (px) => {
 };
 
 export async function startKeeper() {
-  if (!config.deployerKey) {
-    log("keeper: no DEPLOYER_KEY, skipping");
-    return { tick: async () => {} };
-  }
-  const s = signer(config.deployerKey);
+  const s = signer(requireKey("KEEPER_KEY", config.keeperKey));
   const c = contracts(s);
   const r = contracts();
   const done = new Set(); // series fully paid out
   let busy = false;
   log("keeper: settle, pay out, roll vaults, gap rounds, weekly expiries, liquidations");
 
-  async function participants(series) {
-    // holders: anyone who ever received the option token; writers: anyone who ever sold one
-    const tok = r.token(series.token);
-    const logs = await tok.queryFilter(tok.filters.Transfer(), 0, "latest");
-    const holders = new Set(logs.map((l) => l.args.to).filter((a) => a !== ethers.ZeroAddress));
-    const fills = await r.protocol.queryFilter(r.protocol.filters.Filled(series.id), 0, "latest");
-    const rfqs = await r.protocol.queryFilter(r.protocol.filters.RFQFilled(series.id), 0, "latest");
-    const writers = new Set([...fills.map((l) => l.args.seller), ...rfqs.map((l) => l.args.maker)]);
-    return { holders, writers };
-  }
+  // holders: anyone who ever received the option token; writers: anyone who ever sold one.
+  // Both come from the incremental indexer, so nothing scans the chain from block 0.
+  const participants = (series) => ({ holders: index.holders(series.id), writers: index.writers(series.id) });
 
   async function settleAndPay() {
     for (const x of state.series) {
@@ -50,7 +41,8 @@ export async function startKeeper() {
         if (!ok) continue;
         await send(s, `settle ${x.id}`, () => c.protocol.settle(x.id));
       }
-      const { holders, writers } = await participants(x);
+      await sync(); // make sure every transfer up to now is indexed before paying out
+      const { holders, writers } = participants(x);
       for (const h of holders) {
         if ((await r.token(x.token).balanceOf(h)) > 0n) await send(s, `redeemFor ${x.id}`, () => c.protocol.redeemFor(x.id, h));
       }
@@ -58,7 +50,8 @@ export async function startKeeper() {
         if ((await r.protocol.written(x.id, w)) > 0n) await send(s, `claimFor ${x.id}`, () => c.protocol.claimFor(x.id, w));
       }
       done.add(x.id);
-      log(`keeper: series ${x.id} settled and paid out (${holders.size} holders, ${writers.size} writers)`);
+      metrics.inc("keeper_series_paid_total");
+      if (holders.length || writers.length) log(`keeper: series ${x.id} settled and paid out (${holders.length} holders, ${writers.length} writers)`);
     }
   }
 
@@ -140,13 +133,15 @@ export async function startKeeper() {
   async function liquidations() {
     for (const st of D.stocks) {
       const l = c.lender(st.lender);
-      const evs = await r.lender(st.lender).queryFilter(r.lender(st.lender).filters.CollateralIn(), 0, "latest");
-      for (const who of new Set(evs.map((e) => e.args.user))) {
+      for (const who of index.borrowers(st.lender)) {
         if (!(await l.isLiquidatable(who))) continue;
         const debt = (await l.accounts(who)).debt;
         if ((await r.usdc.balanceOf(await s.getAddress())) < debt) continue;
-        await send(s, "approve", () => c.usdc.approve(st.lender, ethers.MaxUint256));
-        if (await send(s, "liquidate", () => l.liquidate(who))) log(`keeper: liquidated ${who} on ${st.symbol} lender`);
+        if ((await r.usdc.allowance(await s.getAddress(), st.lender)) < debt) await send(s, "approve", () => c.usdc.approve(st.lender, ethers.MaxUint256));
+        if (await send(s, "liquidate", () => l.liquidate(who))) {
+          metrics.inc("keeper_liquidations_total", { stock: st.symbol });
+          log(`keeper: liquidated ${who} on ${st.symbol} lender`);
+        }
       }
     }
   }
@@ -155,6 +150,7 @@ export async function startKeeper() {
     if (busy || !state.now) return;
     busy = true;
     try {
+      await sync();
       await settleAndPay();
       await vaults();
       await gapRounds();
@@ -165,9 +161,9 @@ export async function startKeeper() {
       s.reset();
     } finally {
       busy = false;
+      metrics.beat("keeper");
     }
   }
   return { tick };
 }
 
-export { provider };

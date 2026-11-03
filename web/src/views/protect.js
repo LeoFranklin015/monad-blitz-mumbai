@@ -1,3 +1,4 @@
+import { SLIPPAGE_BPS } from "../config.js";
 import { D, S, C, call, usd, sh, fromUsd, fromSh, liveSeries, seriesById, seriesLabel } from "../chain.js";
 import { W, sendCalls, approvals } from "../wallet.js";
 import { $, html, fmt, act } from "../ui.js";
@@ -99,7 +100,7 @@ export function protect(root, refreshAll) {
       await act("Withdrawing", () => sendCalls([call(st.lender, "ShieldedLender", "withdrawCollateral", [sh(num("#wd"))])]), refreshAll); };
     $("#fBuy", r).onclick = async () => { if (!need()) return;
       const [prem] = await C.protocol().quoteBuy(fs.id, sh(floorQty));
-      const max = (prem * 102n) / 100n + 1n;
+      const max = (prem * (10000n + SLIPPAGE_BPS)) / 10000n + 1n;
       await act("Attaching Floor", async () => sendCalls([...(await approvals(D.usdc, st.lender, max)), call(st.lender, "ShieldedLender", "buyFloor", [fs.id, sh(floorQty), max])]), refreshAll); };
     if ($("#fUse", r)) $("#fUse", r).onclick = () => act("Exercising Floor", () => sendCalls([call(st.lender, "ShieldedLender", "useFloor", [sh(Math.min(floorAmt, coll))])]), refreshAll);
   }

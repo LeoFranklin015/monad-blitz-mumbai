@@ -13,3 +13,4 @@ web/dist
 deployments/*.json
 web/public/deployments
 !deployments/.gitkeep
+backend/data/

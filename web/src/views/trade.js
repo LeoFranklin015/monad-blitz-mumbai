@@ -1,6 +1,6 @@
 import { D, S, C, call, usd, sh, fromUsd, fromSh, liveSeries, expiriesOf, payoff } from "../chain.js";
 import { W, sendCalls, approvals } from "../wallet.js";
-import { API_URL, PRODUCTS } from "../config.js";
+import { API_URL, PRODUCTS, SLIPPAGE_BPS } from "../config.js";
 import { $, html, fmt, toast, act, on } from "../ui.js";
 import { openConnect } from "../account.js";
 
@@ -175,7 +175,7 @@ export function trade(root, refreshAll) {
       }, refreshAll);
     }
     const [prem] = await C.protocol().quoteBuy(s.id, amt);
-    const max = (prem * 102n) / 100n + 1n; // makers reprice every block
+    const max = (prem * (10000n + SLIPPAGE_BPS)) / 10000n + 1n; // makers reprice every block
     await act("Buying", async () => {
       await sendCalls([...(await approvals(D.usdc, D.protocol, max)), call(D.protocol, "OptionsProtocol", "buy", [s.id, amt, max, W.address])]);
     }, refreshAll);

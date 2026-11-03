@@ -4,11 +4,12 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "node": "NODE_OPTIONS=--max-old-space-size=6144 hardhat node",
+    "node": "NODE_OPTIONS=--max-old-space-size=6144 hardhat node --hostname ${CHAIN_HOST:-127.0.0.1}",
     "deploy:local": "EXPIRY_MINUTES=${EXPIRY_MINUTES:-4320} hardhat run scripts/deploy.js --network localhost",
     "deploy:monad": "hardhat run scripts/deploy.js --network monad",
     "deploy:monad-testnet": "hardhat run scripts/deploy.js --network monadTestnet",
-    "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia"
+    "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia",
+    "verify": "hardhat run scripts/verify.js"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

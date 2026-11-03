@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {OptionsProtocol} from "../core/OptionsProtocol.sol";
@@ -17,7 +17,7 @@ import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 ///  - expiry no further than `maxTenor` away
 ///  - premium never below `minPremiumBps` of spot
 /// Deposits and withdrawals open between rounds. Shares are pro rata of the stock and USDC held.
-contract CommitVault is ERC20, Ownable, ReentrancyGuard {
+contract CommitVault is ERC20, Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     OptionsProtocol public immutable protocol;
@@ -29,6 +29,7 @@ contract CommitVault is ERC20, Ownable, ReentrancyGuard {
     uint256 public minOtmBps = 300; // 3% out of the money at least
     uint256 public minPremiumBps = 20; // 0.20% of spot per option at least
     uint64 public maxTenor = 8 days;
+    uint256 internal constant VIRTUAL_SHARES = 1e3;
 
     bool public active;
     uint256 public activeSeries;
@@ -72,6 +73,7 @@ contract CommitVault is ERC20, Ownable, ReentrancyGuard {
     }
 
     function setRules(uint256 otm, uint256 prem, uint64 tenor) external onlyOwner {
+        if (otm < 100 || tenor > 31 days) revert RuleBroken("rules");
         minOtmBps = otm;
         minPremiumBps = prem;
         maxTenor = tenor;
@@ -100,7 +102,9 @@ contract CommitVault is ERC20, Ownable, ReentrancyGuard {
         uint256 nav = navInAsset();
         uint256 supply = totalSupply();
         asset.safeTransferFrom(msg.sender, address(this), amount);
-        shares = supply == 0 || nav == 0 ? amount : Math.mulDiv(amount, supply, nav);
+        // Virtual shares and assets make the first-depositor donation attack unprofitable.
+        shares = Math.mulDiv(amount, supply + VIRTUAL_SHARES, nav + 1);
+        if (shares == 0) revert Zero();
         _mint(msg.sender, shares);
         emit Deposit(msg.sender, amount, shares);
     }

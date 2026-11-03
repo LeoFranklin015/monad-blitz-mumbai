@@ -16,6 +16,9 @@
     "deploy:base-sepolia": "npm run deploy:base-sepolia -w contracts",
     "backend": "npm start -w backend",
     "web": "npm run dev -w web",
-    "build": "npm run build -w web"
+    "build": "npm run build -w web",
+    "verify": "npm run verify -w contracts --",
+    "backend:check": "for f in $(find backend/src backend/scripts -name \"*.js\" -o -name \"*.mjs\"); do node --check $f || exit 1; done",
+    "smoke": "bash backend/scripts/smoke.sh"
   }
 }

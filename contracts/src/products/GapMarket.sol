@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable, Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
@@ -13,7 +13,7 @@ import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 /// Pooled (parimutuel) USDC on each side. Betting is open over the weekend and closes at Monday open.
 /// Settles on the same time-weighted Monday-open price the options use.
 /// The live UP/DOWN split is a public weekend price signal that option makers can quote from.
-contract GapMarket is Ownable, ReentrancyGuard {
+contract GapMarket is Ownable2Step, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     struct Round {
@@ -35,6 +35,9 @@ contract GapMarket is Ownable, ReentrancyGuard {
     uint256 public constant GRACE = 7 days;
 
     Round[] public rounds;
+    address public guardian;
+    address public opener; // keeper that opens weekly rounds
+    bool public paused;
     mapping(uint256 => mapping(address => uint256)) public upStake;
     mapping(uint256 => mapping(address => uint256)) public downStake;
 
@@ -48,10 +51,35 @@ contract GapMarket is Ownable, ReentrancyGuard {
     error NotLocked();
     error OracleNotReady();
     error Nothing();
+    error IsPaused();
+    error NotGuardian();
+
+    event Paused(bool paused);
 
     constructor(IERC20 usdc_, IPriceOracle oracle_, address owner_) Ownable(owner_) {
         usdc = usdc_;
         oracle = oracle_;
+        guardian = owner_;
+    }
+
+    function setGuardian(address g) external onlyOwner {
+        guardian = g;
+    }
+
+    function setOpener(address o) external onlyOwner {
+        opener = o;
+    }
+
+    /// @notice Stops new bets only. Settling and claiming always work.
+    function pause() external {
+        if (msg.sender != guardian && msg.sender != owner()) revert NotGuardian();
+        paused = true;
+        emit Paused(true);
+    }
+
+    function unpause() external onlyOwner {
+        paused = false;
+        emit Paused(false);
     }
 
     function setFee(uint256 bps) external onlyOwner {
@@ -65,9 +93,9 @@ contract GapMarket is Ownable, ReentrancyGuard {
 
     function openRound(address asset, uint64 openTime, uint64 lockTime, uint256 refPrice)
         external
-        onlyOwner
         returns (uint256 id)
     {
+        if (msg.sender != owner() && msg.sender != opener) revert NotGuardian();
         if (lockTime <= openTime || refPrice == 0) revert BadRound();
         id = rounds.length;
         rounds.push(Round(asset, openTime, lockTime, refPrice, 0, 0, false, 0, 0));
@@ -75,6 +103,7 @@ contract GapMarket is Ownable, ReentrancyGuard {
     }
 
     function bet(uint256 id, bool up, uint256 amount) external nonReentrant {
+        if (paused) revert IsPaused();
         Round storage r = rounds[id];
         if (block.timestamp >= r.lockTime) revert Locked();
         if (amount == 0) revert Nothing();

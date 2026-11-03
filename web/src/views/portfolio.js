@@ -1,3 +1,4 @@
+import { SLIPPAGE_BPS } from "../config.js";
 import { D, S, C, call, fromUsd, fromSh, seriesLabel, payoff } from "../chain.js";
 import { W, sendCalls, approvals } from "../wallet.js";
 import { $, html, fmt, act } from "../ui.js";
@@ -52,7 +53,7 @@ export function portfolio(root, refreshAll) {
     root.querySelectorAll("[data-sell]").forEach((b) => (b.onclick = async () => {
       const id = Number(b.dataset.sell), n = BigInt(b.dataset.n);
       const [gross] = await p.quoteSell(id, n);
-      const minNet = (gross * 98n) / 100n;
+      const minNet = (gross * (10000n - SLIPPAGE_BPS)) / 10000n;
       await act("Selling", () => sendCalls([call(D.protocol, "OptionsProtocol", "sell", [id, n, minNet, false])]), refreshAll);
     }));
     root.querySelectorAll("[data-ex]").forEach((b) => (b.onclick = async () => {

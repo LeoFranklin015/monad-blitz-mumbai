@@ -7,15 +7,16 @@ import { ethers } from "ethers";
 import { D, config } from "../config.js";
 import { contracts, signer, send, usdTo, log, provider } from "../lib/chain.js";
 import { state } from "../lib/market.js";
+import { metrics } from "../lib/obs.js";
 
 const SAMPLES_PER_EXPIRY = 5;
 
 export async function startReporter() {
-  if (!config.deployerKey) {
-    log("reporter: no DEPLOYER_KEY, skipping");
+  if (!config.reporterKey) {
+    log("reporter: no REPORTER_KEY, skipping");
     return { tick: async () => {} };
   }
-  const s = signer(config.deployerKey);
+  const s = signer(config.reporterKey);
   const { oracle } = contracts(s);
   const prices = Object.fromEntries(D.stocks.map((st) => [st.address, st.spot]));
   const sampled = new Map(); // `${asset}:${expiry}` -> count
@@ -68,6 +69,7 @@ export async function startReporter() {
         }
       }
     }
+    metrics.beat("reporter");
   }
   return { tick };
 }

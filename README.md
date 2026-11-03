@@ -24,19 +24,29 @@ contracts/   Hardhat project: protocol, oracles, products, integrations, mocks, 
 backend/     Node services: maker bots, hedged maker operator, RFQ + market API, price reporter, keeper
 web/         Vite app: Trade, Earn, Protect, Portfolio. JAW passkey accounts, demo accounts, browser wallets
 deployments/ Written by the deploy script: addresses per network and the ABI bundle
+docker/      Dockerfiles for backend, web (nginx) and the dev chain, plus nginx.conf
+.github/     CI: contract tests, backend syntax check, web build, full-stack smoke test, Docker build
 ```
 
 ## Quick start (local)
 
 ```bash
 npm install
-npm test                 # 37 contract tests
+npm test                 # 38 contract tests
 
 npm run chain            # terminal 1: local chain on :8545
 npm run deploy:local     # terminal 2: 3 stocks, 108 series over 2 weekly expiries, vaults, lenders, gap rounds
 npm run backend          # terminal 2: makers, hedged maker, API on :8787, reporter, keeper
 npm run web              # terminal 3: http://localhost:5173
 ```
+
+Or the whole stack in Docker (chain, deploy, backend, web on :8080):
+
+```bash
+docker compose --profile local up --build
+```
+
+`npm run smoke` boots chain, deploy and backend and checks the API reports live quotes (what CI runs).
 
 In the app: **Connect → Demo account**, then **Test funds**. The yellow **Demo controls** panel (local chain only) runs the pitch:
 
@@ -116,35 +126,16 @@ cp web/.env.example web/.env
 
 Add your app's domain to the API key's allowed domains in the JAW dashboard. Without a key, the Passkey option is shown disabled with the reason.
 
-## Deploy to a live network
+## Production
 
-```bash
-PRIVATE_KEY=0x... npm run deploy:monad            # or deploy:base-sepolia, deploy:monad-testnet
-```
+The backend is built to run unattended against a live deployment:
 
-Optional env for `deploy`:
+- **One key per role.** Keeper, reporter, hedger, makers and HedgedMaker operator each have their own key and are granted their role at deploy. The owner key never touches the backend. A separate guardian can pause new risk instantly; exits (close, cancel, exercise, redeem, claim) are never blocked by pause.
+- **Risk halts.** Makers pull quotes on a stale feed (only while the stock market is open), after a jump above `JUMP_PCT` (with cooldown), in the last `STOP_BEFORE_EXPIRY_SEC` before expiry, when the protocol is paused, and per side when net short delta passes `MAX_SHORT_DELTA`.
+- **Hedging.** `HEDGE_MODE=kuru` hedges the bot makers' net delta through Kuru Flow (Monad mainnet only); `mockdex` locally; `off` otherwise.
+- **Indexer.** Holders, writers, borrowers and bettors are indexed from logs in chunks, with confirmations, and the cursor is persisted in `DATA_DIR`, so restarts resume where they stopped.
+- **Graceful shutdown.** On SIGTERM the backend waits for in-flight ticks, then cancels every quote and verifies the book is empty before exiting (compose gives it 90s).
+- **Observability.** `/health`, `/status` (service tick ages, halts, live quotes, indexer block) and `/metrics` (Prometheus). nginx only exposes `/status` and `/metrics` to private networks. JSON logs with `LOG_FORMAT=json`.
+- **API limits.** Per-IP rate limit, RFQ TTL, max RFQ size and an outstanding signed-quote budget so signed RFQs can't overcommit a maker.
 
-| Var | |
-|---|---|
-| `USE_REAL_TOKENS` | `USDC=0x..,NVDAx=0x..,TSLAx=0x..,SPYx=0x..` to use live xStocks instead of mocks |
-| `PYTH_ADDRESS`, `PYTH_IDS` | use `PythSettlementOracle`; ids are per-share feeds, the multiplier is applied onchain |
-| `DEX_ROUTER` | spot adapter for `HedgedMaker` (an `IDexRouter` over Kuru, 0x or Uniswap) |
-| `EXPIRY_MINUTES` | first expiry; default is next Monday 13:30 UTC (9:30 ET open) |
-
-Backend on a live network:
-
-```bash
-NETWORK=monad DEPLOYER_KEY=0x.. MAKER_KEYS=0x..,0x.. OPERATOR_KEY=0x.. PYTH_IDS=NVDAx=0x.. npm run backend
-```
-
-Then set `VITE_NETWORK` and `VITE_API_URL` and `npm run build` for the app.
-
-## Before real money
-
-- **Not audited.**
-- **Kuru adapter.** `HedgedMaker` speaks `IDexRouter`; write the thin adapter for Kuru's router and verify it on mainnet.
-- **xStocks multiplier.** `IMultiplierToken.multiplier()` must match the issuer's actual function before enabling `useMultiplier`. Verify xStocks addresses on monadvision.
-- **Oracle.** Prefer `PythSettlementOracle` with several submitters; the reporter oracle is for local demos.
-- **Book size.** 64 quotes per side per series bounds matching gas. Benchmark on Monad under load.
-- **Lender.** `ShieldedLender` is a demo of the integration pattern, not a production money market.
-- **Access.** Options on tokenized US equities need the same geographic restrictions as the underlying xStocks.
+Step-by-step deployment, roles, verification, monitoring and the pause procedure are in [DEPLOY.md](DEPLOY.md). The threat model and known limits are in [SECURITY.md](SECURITY.md).

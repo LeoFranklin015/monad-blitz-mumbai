@@ -65,6 +65,14 @@ async function main() {
   const real = parseMap(process.env.USE_REAL_TOKENS);
   const mocks = !real.USDC;
   const operator = process.env.MAKER_OPERATOR || (local ? signers[4].address : deployer.address);
+  // Each backend service runs with its own key. Local defaults are well-known dev accounts.
+  const roles = {
+    keeper: process.env.KEEPER_ADDRESS || (local ? signers[10].address : deployer.address),
+    reporter: process.env.REPORTER_ADDRESS || (local ? signers[12].address : deployer.address),
+    hedger: process.env.HEDGER_ADDRESS || (local ? signers[11].address : deployer.address),
+    guardian: process.env.GUARDIAN_ADDRESS || deployer.address,
+  };
+  const deployBlock = await ethers.provider.getBlockNumber();
 
   console.log(`network ${network.name} · deployer ${deployer.address}`);
   const F = async (name, ...args) => {
@@ -89,18 +97,24 @@ async function main() {
   const protocol = await F("OptionsProtocol", usdcAddr, O, deployer.address);
   const P = await protocol.getAddress();
   const gap = await F("GapMarket", usdcAddr, O, deployer.address);
+  await (await protocol.setGuardian(roles.guardian)).wait();
+  await (await gap.setGuardian(roles.guardian)).wait();
+  await (await gap.setOpener(roles.keeper)).wait();
+  if (oracleKind === "reporter" && roles.reporter !== deployer.address) await (await oracle.setReporter(roles.reporter, true)).wait();
 
   let dexAddr = process.env.DEX_ROUTER || null;
   if (!dexAddr && mocks) dexAddr = await (await F("MockDex", O, usdcAddr)).getAddress();
   const hedged = dexAddr ? await F("HedgedMaker", P, dexAddr, deployer.address, operator) : null;
+  if (hedged) await (await hedged.setHook(true)).wait();
 
   const pythIds = parseMap(process.env.PYTH_IDS);
+  const multSource = parseMap(process.env.MULTIPLIER_SOURCES); // SYMBOL=contract exposing multiplier()
   const stocks = [];
   for (const st of STOCKS) {
     const addr = real[st.symbol] || (await (await F("MockXStock", st.name, st.symbol, deployer.address)).getAddress());
     await (await protocol.setUnderlying(addr, true)).wait();
     if (oracleKind === "reporter") await (await oracle.pushSpot(addr, usd(st.spot))).wait();
-    else if (pythIds[st.symbol]) await (await oracle.setFeed(addr, pythIds[st.symbol], true, 3600)).wait();
+    else if (pythIds[st.symbol]) await (await oracle.setFeed(addr, pythIds[st.symbol], multSource[st.symbol] || (mocks ? addr : ethers.ZeroAddress), 3600, 50)).wait();
 
     const series = [];
     const add = async (expiry, kind, strike, strike2) => {
@@ -122,6 +136,7 @@ async function main() {
     const gapRound = Number(await gap.roundCount());
     await (await gap.openRound(addr, now, e1, usd(st.spot))).wait();
     const vault = await F("CommitVault", P, addr, `Auto-Commit ${st.symbol}`, `ac${st.symbol}`, deployer.address);
+    await (await vault.setKeeper(roles.keeper)).wait();
     const lender = await F("ShieldedLender", P, addr, deployer.address);
 
     stocks.push({
@@ -143,6 +158,9 @@ async function main() {
       if (hedged) await (await tok.mint(await hedged.getAddress(), sh(2_000))).wait();
     }
     if (dexAddr) await (await usdc.mint(dexAddr, usd(20_000_000))).wait();
+    await (await usdc.mint(roles.keeper, usd(5_000_000))).wait(); // liquidation float
+    await (await usdc.mint(roles.hedger, usd(5_000_000))).wait(); // hedge float
+    for (const st of stocks) await (await (await ethers.getContractAt("MockXStock", st.address)).mint(roles.hedger, sh(5_000))).wait();
     if (hedged) await (await usdc.mint(await hedged.getAddress(), usd(2_000_000))).wait();
   }
 
@@ -152,13 +170,17 @@ async function main() {
     rpc: local ? "http://127.0.0.1:8545" : network.config.url,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
+    deployBlock,
+    roles,
     expiries,
     settlementWindow: 600,
     mocks,
     oracleKind,
     usdc: usdcAddr,
     oracle: O,
+    pyth: process.env.PYTH_ADDRESS || null,
     protocol: P,
+    tokenFactory: await protocol.tokenFactory(),
     gap: await gap.getAddress(),
     dex: dexAddr,
     hedgedMaker: hedged ? await hedged.getAddress() : null,
