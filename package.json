@@ -1,24 +1,21 @@
 {
   "name": "weekend-options",
-  "version": "1.0.0",
+  "private": true,
   "description": "Fully onchain options on tokenized stocks, built for Monad",
+  "workspaces": [
+    "contracts",
+    "backend",
+    "web"
+  ],
   "scripts": {
-    "test": "hardhat test",
-    "compile": "hardhat compile",
-    "node": "hardhat node",
-    "deploy:local": "EXPIRY_MINUTES=4320 hardhat run scripts/deploy.js --network localhost",
-    "deploy:monad": "hardhat run scripts/deploy.js --network monadTestnet",
-    "makers": "SIMULATE=1 hardhat run scripts/maker-bot.js --network localhost",
-    "app": "cd app && python3 -m http.server 5173"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "@openzeppelin/contracts": "^5.6.1",
-    "hardhat": "^2.29.1",
-    "solc": "^0.8.24"
-  },
-  "private": true
+    "test": "npm test -w contracts",
+    "chain": "npm run node -w contracts",
+    "deploy:local": "npm run deploy:local -w contracts",
+    "deploy:monad": "npm run deploy:monad -w contracts",
+    "deploy:monad-testnet": "npm run deploy:monad-testnet -w contracts",
+    "deploy:base-sepolia": "npm run deploy:base-sepolia -w contracts",
+    "backend": "npm start -w backend",
+    "web": "npm run dev -w web",
+    "build": "npm run build -w web"
+  }
 }

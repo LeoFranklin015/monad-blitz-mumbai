@@ -1,0 +1,14 @@
+{
+  "name": "@weekend-options/backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "makers": "node src/index.js makers rfq",
+    "keeper": "node src/index.js keeper",
+    "reporter": "node src/index.js reporter"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0"
+  }
+}

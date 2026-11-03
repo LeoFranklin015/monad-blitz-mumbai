@@ -1,0 +1,17 @@
+{
+  "name": "@weekend-options/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --port 5173"
+  },
+  "dependencies": {
+    "@jaw.id/core": "^1.10.3",
+    "ethers": "^6.13.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

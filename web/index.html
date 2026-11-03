@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Weekend Options</title>
+    <link rel="icon" href="data:," />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">Weekend<span>.</span> Options</div>
+      <nav id="nav">
+        <button data-view="trade" class="on">Trade</button>
+        <button data-view="earn">Earn</button>
+        <button data-view="protect">Protect</button>
+        <button data-view="portfolio">Portfolio</button>
+      </nav>
+      <div class="spacer"></div>
+      <span id="mkt" class="pill">loading</span>
+      <span id="qps" class="pill mono">0 quotes/s</span>
+      <div id="account"></div>
+    </header>
+    <main id="view"></main>
+    <aside id="demo" class="card demo" hidden></aside>
+    <div id="toast" class="toast"></div>
+    <div id="modal" class="modal" hidden></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

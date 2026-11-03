@@ -1,0 +1,19 @@
+{
+  "name": "@weekend-options/contracts",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "NODE_OPTIONS=--max-old-space-size=6144 hardhat node",
+    "deploy:local": "EXPIRY_MINUTES=${EXPIRY_MINUTES:-4320} hardhat run scripts/deploy.js --network localhost",
+    "deploy:monad": "hardhat run scripts/deploy.js --network monad",
+    "deploy:monad-testnet": "hardhat run scripts/deploy.js --network monadTestnet",
+    "deploy:base-sepolia": "hardhat run scripts/deploy.js --network baseSepolia"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@openzeppelin/contracts": "^5.4.0",
+    "hardhat": "^2.22.0",
+    "solc": "0.8.24"
+  }
+}
