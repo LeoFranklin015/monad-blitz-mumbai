@@ -3,9 +3,12 @@
 //    every action is one atomic wallet_sendCalls batch, approvals included, one passkey prompt,
 //    gas optionally sponsored by a paymaster.
 //  - Local demo accounts on the dev chain (unlocked Hardhat accounts).
+//  - Mera passkey accounts on any chain: the passkey derives a plain EOA (see mera.js);
+//    the key stays inside a Mera signing session held while signed in.
 //  - Any injected wallet (MetaMask, Rabby).
 import { ethers } from "ethers";
-import { D, read, isLocal, call, localRpc } from "./chain.js";
+import { D, read, isLocal, call, localRpc, nativeBalance } from "./chain.js";
+import { MeraSigner, isMeraError, openSession, createPasskey, usePasskey, storedCredential, saveCredential, recoveryPhrase } from "./mera.js";
 import { JAW_API_KEY, PAYMASTER_URL } from "./config.js";
 
 export const W = { kind: null, address: null, signer: null, jaw: null, listeners: [] };
@@ -141,11 +144,84 @@ export async function restoreSession() {
   }
 }
 
-export async function disconnect() {
+
+// ---- Mera passkey accounts -----------------------------------------------------------
+const IDLE_MS = 30 * 60 * 1000;
+let meraSession = null;
+let lastActive = Date.now();
+let idleTimer = null;
+export const meraKnown = () => storedCredential();
+
+/// Sign in with a passkey. mode: "known" (this browser's stored passkey), "create", or "existing" (pick any).
+/// onPhase("waiting" | "deriving") lets the UI show where the ceremony is.
+export async function connectMera(mode, onPhase = () => {}) {
+  const rpId = location.hostname;
+  onPhase("waiting");
+  const known = storedCredential();
+  const got = mode === "create" ? await createPasskey(rpId) : await usePasskey(rpId, mode === "known" ? known : undefined);
+  onPhase("deriving");
+  let opened;
+  try {
+    opened = openSession(got.prfOutput);
+  } finally {
+    got.prfOutput.fill(0);
+  }
+  if (W.kind) await disconnect(false);
+  meraSession = opened.session;
+  saveCredential({ ...got.credential, address: opened.account.address });
+  W.kind = "mera";
+  W.address = opened.account.address;
+  W.signer = new MeraSigner(opened.account, read);
+  watchIdle();
+  emit();
+  return W.address;
+}
+
+/// Fresh passkey prompt for the 24 words; the PRF output is wiped before returning.
+export async function exportRecoveryPhrase() {
+  if (W.kind !== "mera") throw new Error("Only passkey accounts have a recovery phrase here");
+  const known = storedCredential();
+  const got = await usePasskey(location.hostname, known?.address === W.address ? known : undefined);
+  try {
+    const { session, account } = openSession(got.prfOutput);
+    session.end();
+    if (account.address !== W.address) throw new Error("That passkey belongs to a different account");
+    return recoveryPhrase(got.prfOutput);
+  } finally {
+    got.prfOutput.fill(0);
+  }
+}
+
+function watchIdle() {
+  lastActive = Date.now();
+  if (idleTimer) return;
+  const bump = () => (lastActive = Date.now());
+  ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, bump, { capture: true, passive: true }));
+  idleTimer = setInterval(() => {
+    if (W.kind === "mera" && Date.now() - lastActive > IDLE_MS) {
+      disconnect(false).then(() => {
+        W.idleEnded = true;
+        emit();
+      }, console.error);
+    }
+  }, 30_000);
+}
+
+/// Dev chain only: send the account 1 ETH of gas from the deployer.
+export async function fundGasLocal(address) {
+  if (!isLocal()) return false;
+  const { signer } = await devSigner();
+  await (await signer.sendTransaction({ to: address, value: ethers.parseEther("1") })).wait();
+  return true;
+}
+
+export async function disconnect(notify = true) {
   if (W.jaw) await W.jaw.disconnect().catch(() => {});
   try { localStorage.removeItem(REMEMBER); } catch {}
-  Object.assign(W, { kind: null, address: null, signer: null, jaw: null });
-  emit();
+  if (meraSession) meraSession.end();
+  meraSession = null;
+  Object.assign(W, { kind: null, address: null, signer: null, jaw: null, idleEnded: false });
+  if (notify) emit();
 }
 
 /// Send a list of calls. Passkey accounts send them as one atomic batch; other wallets send them in order.
@@ -168,9 +244,14 @@ export async function sendCalls(calls) {
   }
   if (W.kind === "injected" && (await atomicBatching())) return sendBatched(calls);
   let last;
-  for (const c of calls) {
-    const tx = await W.signer.sendTransaction({ to: c.to, data: c.data, value: c.value || 0n });
-    last = await tx.wait();
+  try {
+    for (const c of calls) {
+      const tx = await W.signer.sendTransaction({ to: c.to, data: c.data, value: c.value || 0n });
+      last = await tx.wait();
+    }
+  } catch (e) {
+    if (isMeraError(e) && e.code === "SESSION_ENDED") await disconnect(); // back to Connect; the toast says sign in again
+    throw e;
   }
   return last;
 }
