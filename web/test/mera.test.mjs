@@ -87,5 +87,7 @@ test("sends a transaction on a live chain with gas limit = estimate x 1.2", { sk
   assert.equal(rc.from, account.address);
   assert.equal(tx.gasLimit, (est * 12n) / 10n);
   assert.equal(await p.getBalance(to), 123n);
+  // back-to-back sends right after a mined one must not reuse a nonce
+  for (let i = 0; i < 3; i++) assert.equal((await (await s.sendTransaction({ to, value: 1n })).wait()).status, 1);
   session.end();
 });

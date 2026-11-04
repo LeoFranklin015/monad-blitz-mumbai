@@ -97,8 +97,11 @@ export const isRetryable = (e) => isMeraError(e) && ["PASSKEY_CANCELLED", "PASSK
 /// ethers v6 Signer whose signatures come from a Mera viem account.
 /// ethers populates (nonce, chainId, EIP-1559 fees); the gas limit is set explicitly at
 /// estimate × 1.2 because Monad charges the declared limit, not gas used.
+/// Nonces are tracked locally on top of the chain's pending count: ethers caches identical RPC
+/// reads for a moment, and on fast chains a second send can read the count from before the first.
 export class MeraSigner extends AbstractSigner {
   #account;
+  #next = 0;
   constructor(account, provider) {
     super(provider);
     this.#account = account;
@@ -111,11 +114,25 @@ export class MeraSigner extends AbstractSigner {
     return new MeraSigner(this.#account, provider);
   }
   async populateTransaction(tx) {
+    if (tx.nonce == null) {
+      const pending = await this.provider.getTransactionCount(this.address, "pending");
+      const nonce = Math.max(pending, this.#next);
+      this.#next = nonce + 1;
+      tx = { ...tx, nonce };
+    }
     if (tx.gasLimit == null) {
       const est = await this.estimateGas({ ...tx, from: this.address });
       tx = { ...tx, gasLimit: (est * 12n) / 10n };
     }
     return super.populateTransaction(tx);
+  }
+  async sendTransaction(tx) {
+    try {
+      return await super.sendTransaction(tx);
+    } catch (e) {
+      this.#next = 0; // nothing was broadcast, go back to the chain's count
+      throw e;
+    }
   }
   async signTransaction(tx) {
     let t = tx;
