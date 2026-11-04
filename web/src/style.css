@@ -1062,3 +1062,11 @@ header .brand img { height: 22px; display: block; }
 @media (max-width: 720px) { header { flex-wrap: wrap; padding: 10px 14px; gap: 10px; } #nav { height: auto; } #nav button { padding: 8px 8px; } }
 .gas-chip--funds { color: var(--text); border-color: var(--accent); background: rgba(140, 82, 255, .16); }
 .gas-chip--funds:hover { background: rgba(140, 82, 255, .28); }
+
+/* Buy loader: fills the gap between the Buy click and the trade popup */
+.modal .card.pro-loader { max-width: 380px; padding: 28px 24px; text-align: center; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 24px 80px rgba(0, 0, 0, .55); }
+.pro-loader__spin { width: 34px; height: 34px; margin: 0 auto 16px; border: 3px solid var(--line); border-top-color: var(--up); border-radius: 50%; animation: pro-spin .8s linear infinite; }
+.pro-loader__title { font-weight: 600; margin-bottom: 6px; }
+.pro-loader__sub { color: var(--muted); font-size: 13px; }
+@keyframes pro-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pro-loader__spin { animation-duration: 2.4s; } }

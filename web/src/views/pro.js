@@ -1031,13 +1031,36 @@ export function pro(root, refreshAll) {
       return;
     }
     const maxCost = (prem * (10000n + SLIPPAGE_BPS)) / 10000n + 1n;
+    showBuyLoader(s);
     await act("Buying", async () => {
+      try {
       const approveCalls = await approvals(D.usdc, D.protocol, maxCost);
       const rc = await sendCalls([...approveCalls, call(D.protocol, "OptionsProtocol", "buy", [s.id, amt, maxCost, W.address])]);
       rememberCost(s.id, fromUsd(prem));
       heldAt = 0; // reload held positions
       showTradePopup({ s, amount: T.amount, premium: fromUsd(prem), hash: rc?.hash || rc?.transactionHash || rc?.receipts?.[0]?.transactionHash });
+      } catch (e) { hideBuyLoader(); throw e; }
     }, refreshAll);
+  }
+
+  // Shown from the Buy click until the trade popup replaces it (or an error closes it).
+  function showBuyLoader(s) {
+    const m = document.getElementById("modal");
+    if (!m) return;
+    const label = `${PRODUCTS[s.kind].name} ${s.stock.symbol} $${s.strike}`;
+    const ask = W.kind === "mera" ? "Confirm with your passkey" : "Confirm in your wallet";
+    m.innerHTML = html`<div class="card pro-loader" role="status" aria-live="polite" id="pro-buy-loader">
+      <div class="pro-loader__spin" aria-hidden="true"></div>
+      <div class="pro-loader__title">Buying ${fmt.sh(T.amount, 4)} ${label}</div>
+      <div class="pro-loader__sub">${ask}, then we wait for the transaction to be mined.</div>
+    </div>`;
+    m.onclick = null;
+    m.hidden = false;
+  }
+
+  function hideBuyLoader() {
+    const m = document.getElementById("modal");
+    if (m?.querySelector("#pro-buy-loader")) { m.hidden = true; m.innerHTML = ""; }
   }
 
   async function execMarketSell(s) {
