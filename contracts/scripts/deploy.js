@@ -3,6 +3,7 @@
 //
 //   npm run deploy:local                       (from repo root, needs `npm run chain`)
 //   PRIVATE_KEY=0x.. npm run deploy:monad
+//   npm run deploy:monad-testnet               (Kuru's test tokens and books: see contracts/monad-testnet.env.example)
 //
 // Env:
 //   EXPIRY_MINUTES    first expiry this many minutes from now (default: next Monday 13:30 UTC = 9:30 ET open)
@@ -11,6 +12,11 @@
 //   PYTH_IDS          "NVDAx=0x..,TSLAx=0x..,SPYx=0x.." Pyth price ids (per share; multiplier applied onchain)
 //   DEX_ROUTER        spot venue adapter for HedgedMaker (default: MockDex on mock deployments)
 //   MAKER_OPERATOR    address that runs the HedgedMaker (default: local account #4, or the deployer)
+//   KURU_ACCOUNT_CORE Kuru AccountCore. With KURU_MARKETS, deploys KuruAdapter as the hedge venue (unless DEX_ROUTER
+//                     is set), centres spots and strikes on Kuru's mid prices, and records each market for the backend
+//   KURU_MARKETS      "NVDAx=0x..,TSLAx=0x..,SPYx=0x.." Kuru stock/USDC markets
+//   DEPLOY_STOCKS     "NVDAx" or "NVDAx,TSLAx": deploy only these stocks (default all three; each costs ~3.5 MON of gas on testnet)
+//   HOOK_GAS          fill-hook gas budget (default 1,000,000 with Kuru: a hedge there is ~430k-490k gas)
 const fs = require("fs");
 const path = require("path");
 const { ethers, network, artifacts } = require("hardhat");
@@ -28,7 +34,7 @@ const STRIKE_STEPS = [-0.1, -0.05, -0.025, 0, 0.025, 0.05, 0.1];
 const SPREAD_LEGS = [[0.025, 0.075], [0.05, 0.1]]; // Capped Upside legs above spot, mirrored for Budget Floors
 const ABI_CONTRACTS = [
   "OptionsProtocol", "OptionToken", "SettlementOracle", "PythSettlementOracle", "GapMarket",
-  "CommitVault", "ShieldedLender", "HedgedMaker", "MockDex", "MockERC20", "MockXStock",
+  "CommitVault", "ShieldedLender", "HedgedMaker", "MockDex", "MockERC20", "MockXStock", "KuruAdapter",
 ];
 
 const parseMap = (s) => Object.fromEntries((s || "").split(",").filter(Boolean).map((kv) => kv.split("=").map((x) => x.trim())));
@@ -53,6 +59,14 @@ async function sendAndParse(contract, fn, args, eventName) {
     } catch {}
   }
   return null;
+}
+
+/// Mid price of a Kuru stock/USDC market from its order book, in USDC.
+async function kuruMid(market) {
+  const m = await ethers.getContractAt("IKuruMarket", market);
+  const [[bid, ask], pp] = await Promise.all([m.bestBidAsk(), m.pricePrecision()]);
+  if (ask === 0n || bid === 2n ** 32n - 1n) throw new Error(`Kuru market ${market} has an empty side`);
+  return Number(bid + ask) / 2 / Number(pp);
 }
 
 async function main() {
@@ -102,18 +116,30 @@ async function main() {
   await (await gap.setOpener(roles.keeper)).wait();
   if (oracleKind === "reporter" && roles.reporter !== deployer.address) await (await oracle.setReporter(roles.reporter, true)).wait();
 
+  const kuruCore = process.env.KURU_ACCOUNT_CORE || null;
+  const kuruMarkets = parseMap(process.env.KURU_MARKETS);
   let dexAddr = process.env.DEX_ROUTER || null;
+  let kuruAdapter = null;
+  if (!dexAddr && kuruCore) {
+    kuruAdapter = await F("KuruAdapter", kuruCore, usdcAddr, deployer.address);
+    dexAddr = await kuruAdapter.getAddress();
+  }
   if (!dexAddr && mocks) dexAddr = await (await F("MockDex", O, usdcAddr)).getAddress();
+  if (kuruCore) await (await protocol.setHookGas(Number(process.env.HOOK_GAS || 1_000_000))).wait();
   const hedged = dexAddr ? await F("HedgedMaker", P, dexAddr, deployer.address, operator) : null;
   if (hedged) await (await hedged.setHook(true)).wait();
 
   const pythIds = parseMap(process.env.PYTH_IDS);
   const multSource = parseMap(process.env.MULTIPLIER_SOURCES); // SYMBOL=contract exposing multiplier()
   const stocks = [];
-  for (const st of STOCKS) {
+  const only = (process.env.DEPLOY_STOCKS || "").split(",").map((x) => x.trim()).filter(Boolean);
+  for (const st of STOCKS.filter((x) => !only.length || only.includes(x.symbol))) {
     const addr = real[st.symbol] || (await (await F("MockXStock", st.name, st.symbol, deployer.address)).getAddress());
+    const kuruMarket = kuruMarkets[st.symbol] || null;
+    const spot = kuruMarket ? await kuruMid(kuruMarket) : st.spot; // strikes centre on the price being hedged
+    if (kuruAdapter && kuruMarket) await (await kuruAdapter.setMarket(addr, kuruMarket)).wait();
     await (await protocol.setUnderlying(addr, true)).wait();
-    if (oracleKind === "reporter") await (await oracle.pushSpot(addr, usd(st.spot))).wait();
+    if (oracleKind === "reporter") await (await oracle.pushSpot(addr, usd(spot))).wait();
     else if (pythIds[st.symbol]) await (await oracle.setFeed(addr, pythIds[st.symbol], multSource[st.symbol] || (mocks ? addr : ethers.ZeroAddress), 3600, 50)).wait();
 
     const series = [];
@@ -123,24 +149,24 @@ async function main() {
     };
     for (const expiry of expiries) {
       for (const step of STRIKE_STEPS) {
-        const k = roundStrike(st.spot * (1 + step));
+        const k = roundStrike(spot * (1 + step));
         await add(expiry, KIND.CALL, k, 0);
         await add(expiry, KIND.PUT, k, 0);
       }
       for (const [a, b] of SPREAD_LEGS) {
-        await add(expiry, KIND.CALL_SPREAD, roundStrike(st.spot * (1 + a)), roundStrike(st.spot * (1 + b)));
-        await add(expiry, KIND.PUT_SPREAD, roundStrike(st.spot * (1 - a)), roundStrike(st.spot * (1 - b)));
+        await add(expiry, KIND.CALL_SPREAD, roundStrike(spot * (1 + a)), roundStrike(spot * (1 + b)));
+        await add(expiry, KIND.PUT_SPREAD, roundStrike(spot * (1 - a)), roundStrike(spot * (1 - b)));
       }
     }
 
     const gapRound = Number(await gap.roundCount());
-    await (await gap.openRound(addr, now, e1, usd(st.spot))).wait();
+    await (await gap.openRound(addr, now, e1, usd(spot))).wait();
     const vault = await F("CommitVault", P, addr, `Auto-Commit ${st.symbol}`, `ac${st.symbol}`, deployer.address);
     await (await vault.setKeeper(roles.keeper)).wait();
     const lender = await F("ShieldedLender", P, addr, deployer.address);
 
     stocks.push({
-      symbol: st.symbol, name: st.name, spot: st.spot, vol: st.vol, address: addr,
+      symbol: st.symbol, name: st.name, spot, vol: st.vol, address: addr, kuruMarket,
       series, gapRounds: [{ id: gapRound, lockTime: e1 }],
       vault: await vault.getAddress(), lender: await lender.getAddress(),
     });
@@ -167,7 +193,7 @@ async function main() {
   const out = {
     network: network.name,
     chainId: Number((await ethers.provider.getNetwork()).chainId),
-    rpc: local ? "http://127.0.0.1:8545" : network.config.url,
+    rpc: local ? process.env.LOCAL_RPC || "http://127.0.0.1:8545" : network.config.url,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
     deployBlock,
@@ -184,6 +210,8 @@ async function main() {
     gap: await gap.getAddress(),
     dex: dexAddr,
     hedgedMaker: hedged ? await hedged.getAddress() : null,
+    kuruAccountCore: kuruCore,
+    kuruAdapter: kuruAdapter ? await kuruAdapter.getAddress() : null,
     makerOperator: operator,
     stocks,
   };

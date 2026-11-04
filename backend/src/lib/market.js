@@ -1,5 +1,5 @@
 import { D, config } from "../config.js";
-import { contracts, usdFrom, log } from "./chain.js";
+import { contracts, usdFrom, log, provider } from "./chain.js";
 import { priceSeries, marketClosed, YEAR } from "./pricing.js";
 import { metrics } from "./obs.js";
 import { kuruSpot } from "./kuru.js";
@@ -70,13 +70,24 @@ function assessRisk() {
   }
 }
 
+/// Spot per stock address from the settlement oracle, in USDC (0 = never pushed).
+async function oracleSpots() {
+  const { oracle } = contracts();
+  const vals = await Promise.all(D.stocks.map((s) => oracle.spot(s.address)));
+  return Object.fromEntries(D.stocks.map((s, i) => [s.address, usdFrom(vals[i][0])]));
+}
+
 export async function refreshMarket() {
   refreshSeries();
-  state.now = Math.floor(Date.now() / 1000);
+  // Chain time, not wall time: expiries, settlement windows and the keeper all follow block.timestamp, and a
+  // local chain can be moved forward (the app's "Jump to expiry" demo control).
+  state.now = Number((await provider.getBlock("latest")).timestamp);
   state.closed = marketClosed(state.now);
-  // Prices come from Kuru WS — no chain calls.
+  // Prices come from the Kuru WS feed when the deployment has one (no chain calls). Otherwise read our own
+  // oracle's spot, which the reporter keeps on Kuru's mid (PRICE_SOURCE=kuru) and the protocol settles against.
+  const fromOracle = D.kuruWs ? null : await oracleSpots();
   for (const s of D.stocks) {
-    const px = kuruSpot(s.address);
+    const px = fromOracle ? fromOracle[s.address] : kuruSpot(s.address);
     if (!px) continue;
     const old = state.spots[s.address];
     if (old && Math.abs(px / old - 1) > config.jumpPct) {
