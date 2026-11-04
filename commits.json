@@ -1,0 +1,15 @@
+[
+  {"hash":"d1ddb0aac32a5c3d2d563b5e94194969242cc976","short":"d1ddb0a","message":"chore(e2e): add Playwright end-to-end test scripts covering full flow, Pro view, dropdown, polish, and fixes","date":"2026-11-04 10:53:12 +0530"},
+  {"hash":"5ca13f6390f219f7b19079d4acad645c5418e6ea","short":"5ca13f6","message":"feat(web): add app entry point — bootstrap sequence, nav routing, demo panel mount, 2-second poll loop, window.__app debug handle","date":"2026-11-04 10:53:12 +0530"},
+  {"hash":"bc7c6a11fdd4f65424ad9bddf4e883dcd7e96899","short":"bc7c6a1","message":"feat(web/views): add Pro view — exchange-style layout with candlestick chart, order book, RFQ trade form, open orders, trade history, and positions tabs","date":"2026-11-04 10:53:12 +0530"},
+  {"hash":"d27f0436a334e9d81929bdb50cd9fd719d30df2a","short":"d27f043","message":"feat(web/lib): add core blockchain layer — deployment loader, ethers provider, contract factories, unit converters, reactive state, series and market refresh","date":"2026-11-04 10:53:11 +0530"},
+  {"hash":"6f370ed483cfc142bf18a4354594ffb6251c5537","short":"6f370ed","message":"feat(web): add global stylesheet — CSS tokens, base resets, utility classes, stat tiles, modals, toasts, and Pro-page grid rules","date":"2026-11-04 10:53:11 +0530"},
+  {"hash":"00b7157f5a3a7403cca043d7e82f5fb7b09e77b9","short":"00b7157","message":"feat(web): add root HTML shell — sticky header, nav buttons, market-status pills, view mount point, toast and modal overlays","date":"2026-11-04 10:53:11 +0530"},
+  {"hash":"7f0514f1242266f73113688bc3d029c02aa86775","short":"7f0514f","message":"build(web): scaffold Vite frontend package and dev-server config with Monad RPC proxy","date":"2026-11-04 10:53:11 +0530"},
+  {"hash":"1b05f3a0a724d9102d03fcda349a24a22d14a401","short":"1b05f3a","message":"feat(backend/services): add HTTP API server — /health, /status, /metrics, /markets, /rfq (EIP-712 signed quotes), /ohlc with Yahoo Finance proxy","date":"2026-11-04 10:53:11 +0530"},
+  {"hash":"e0fe40daaa710f90cf89cca90c4d4bfdf86a1951","short":"e0fe40d","message":"feat(backend/lib): add chain primitives layer — batched ethers provider, nonce-managed signer, contract factories, serialized send(), series cache","date":"2026-11-04 10:53:10 +0530"},
+  {"hash":"aedc679289e02de30fae21a568855d779fd00c8e","short":"aedc679","message":"chore: init monorepo workspace with root package, gitignore, and docs","date":"2026-11-04 10:53:10 +0530"},
+  {"hash":"022dbed7558c4b3b40dd475312d8a032353913ba","short":"022dbed","message":"Production environment: hardened contracts, role keys, risk halts, hedger, indexer, Docker, CI, runbooks","date":"2026-11-03 17:30:38 +0000"},
+  {"hash":"63c50638d7fb87d4f3e60b6a986bfcae0aedadab","short":"63c5063","message":"Full version: two-sided book, spreads, atomic hedging, Pyth settlement, backend services, passkey web app","date":"2026-11-03 06:31:49 +0000"},
+  {"hash":"1f5dcba9e9356ac80cbc712e5949c25da088db84","short":"1f5dcba","message":"Weekend Options: onchain options on tokenized stocks for Monad","date":"2026-11-03 05:50:20 +0000"}
+]
