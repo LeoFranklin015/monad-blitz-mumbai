@@ -10,7 +10,7 @@
 import http from "node:http";
 import { ethers } from "ethers";
 import { D, config, KIND, NETWORK } from "../config.js";
-import { contracts, provider, usdTo, shTo, usdFrom, shFrom, log } from "../lib/chain.js";
+import { contracts, usdTo, shTo, usdFrom, shFrom, log } from "../lib/chain.js";
 import { state } from "../lib/market.js";
 import { metrics } from "../lib/obs.js";
 import { index } from "../lib/indexer.js";
@@ -29,6 +29,29 @@ const types = {
 
 const hits = new Map(); // ip -> [timestamps]
 const ohlcCache = new Map(); // "SYMBOL:range:interval" -> { data, expiresAt }
+const rpcCache = new Map(); // normalized-request-key -> { body, expiresAt }
+
+// Read-only JSON-RPC methods whose result is stable enough to cache for a few seconds.
+const RPC_CACHEABLE = new Set(["eth_call", "eth_chainId", "eth_getBalance", "eth_getCode", "eth_blockNumber", "eth_getBlockByNumber", "eth_getLogs", "net_version"]);
+const rpcCacheable = (parsed) => {
+  const arr = Array.isArray(parsed) ? parsed : [parsed];
+  return arr.length > 0 && arr.every((c) => c && RPC_CACHEABLE.has(c.method));
+};
+// Rewrite cached response ids to match the current request's ids (ethers correlates by id).
+function restampIds(cachedBody, reqParsed) {
+  try {
+    const resp = JSON.parse(cachedBody);
+    if (Array.isArray(resp) && Array.isArray(reqParsed)) {
+      reqParsed.forEach((c, i) => { if (resp[i]) resp[i].id = c.id; });
+      return JSON.stringify(resp);
+    }
+    if (!Array.isArray(resp) && !Array.isArray(reqParsed)) {
+      resp.id = reqParsed.id;
+      return JSON.stringify(resp);
+    }
+  } catch { /* fall through */ }
+  return cachedBody;
+}
 function limited(ip) {
   const now = Date.now();
   const arr = (hits.get(ip) || []).filter((t) => now - t < 60_000);
@@ -70,14 +93,39 @@ export function startApi() {
           body += chunk;
           if (body.length > 1_000_000) return reply(413, { error: "RPC request too large" });
         }
-        const upstream = await fetch(config.rpc, {
+        let parsed = null;
+        try { parsed = JSON.parse(body); } catch { /* forward as-is, don't cache */ }
+
+        // Short-TTL cache keyed on method+params (ids stripped) so the poll loop's repeated
+        // reads don't re-hit the upstream. State-changing methods are never cached.
+        const cacheable = config.rpcCacheMs > 0 && parsed && rpcCacheable(parsed);
+        let key = null;
+        if (cacheable) {
+          const norm = (c) => ({ method: c.method, params: c.params });
+          key = JSON.stringify(Array.isArray(parsed) ? parsed.map(norm) : norm(parsed));
+          const hit = rpcCache.get(key);
+          if (hit && hit.expiresAt > Date.now()) {
+            metrics.inc("rpc_cache_total", { result: "hit" });
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json");
+            return res.end(restampIds(hit.body, parsed));
+          }
+          metrics.inc("rpc_cache_total", { result: "miss" });
+        }
+
+        const upstream = await fetch(config.nextUpstream(), {
           method: "POST",
           headers: { "content-type": "application/json" },
           body,
         });
+        const text = await upstream.text();
+        if (cacheable && upstream.ok) {
+          rpcCache.set(key, { body: text, expiresAt: Date.now() + config.rpcCacheMs });
+          if (rpcCache.size > 5_000) rpcCache.clear();
+        }
         res.statusCode = upstream.status;
         res.setHeader("Content-Type", "application/json");
-        return res.end(await upstream.text());
+        return res.end(text);
       }
       if (url.pathname === "/health") {
         const age = (Date.now() - state.updatedAt) / 1000;
@@ -97,55 +145,6 @@ export function startApi() {
           liveQuotes: stats.liveQuotes,
           quotesPerSec: stats.quotesPerSec,
         });
-      }
-      if (url.pathname === "/trades") {
-        const address = url.searchParams.get("address");
-        if (!ethers.isAddress(address)) return reply(400, { error: "valid address required" });
-        const latest = await provider.getBlockNumber();
-        const requested = Number(url.searchParams.get("blocks") || 2_000);
-        const blocks = Math.min(Math.max(Number.isFinite(requested) ? requested : 2_000, 100), 10_000);
-        const minBlock = Math.max(Number(D.deployBlock || 0), latest - blocks + 1);
-        const addr = ethers.getAddress(address);
-        const topics = [[
-          protocol.interface.getEvent("Filled").topicHash,
-          protocol.interface.getEvent("RFQFilled").topicHash,
-        ]];
-        const matching = [];
-        let fromBlock = latest;
-        for (let toBlock = latest; toBlock >= minBlock; toBlock -= 100) {
-          fromBlock = Math.max(minBlock, toBlock - 99);
-          const page = await provider.getLogs({ address: D.protocol, topics, fromBlock, toBlock });
-          for (const log of page) {
-            const event = protocol.interface.parseLog(log);
-            const seller = event.args.seller || event.args.maker;
-            if (event.args.buyer.toLowerCase() === addr.toLowerCase() || seller.toLowerCase() === addr.toLowerCase()) {
-              matching.push({ log, event });
-            }
-          }
-          if (matching.length) break;
-        }
-        const seen = new Set();
-        const trades = matching
-          .filter(({ log }) => {
-            const key = `${log.transactionHash}:${log.index}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          })
-          .sort((a, b) => b.log.blockNumber - a.log.blockNumber)
-          .slice(0, 50)
-          .map(({ log, event }) => ({
-            transactionHash: log.transactionHash,
-            logIndex: log.index,
-            blockNumber: log.blockNumber,
-            seriesId: Number(event.args.seriesId),
-            seller: event.args.seller || event.args.maker,
-            buyer: event.args.buyer,
-            amount: event.args.amount,
-            price: event.args.price,
-            via: event.fragment.name === "RFQFilled" ? "rfq" : "book",
-          }));
-        return reply(200, { fromBlock, latest, trades });
       }
       if (url.pathname === "/metrics") return reply(200, metrics.text(), "text/plain; version=0.0.4");
 

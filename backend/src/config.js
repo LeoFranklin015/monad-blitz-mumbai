@@ -37,8 +37,27 @@ const simulateDefault = env.SIMULATE ? env.SIMULATE === "1" : LOCAL && D.oracleK
 const list = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
 const num = (k, d) => (env[k] !== undefined && env[k] !== "" ? Number(env[k]) : d);
 
+// Keyed Alchemy endpoints for Monad testnet — higher rate limits than the keyless public RPC.
+// Multiple keys (ALCHEMY_KEYS, comma-separated) are load-balanced round-robin to spread the rate limit.
+const alchemyKeys = list(env.ALCHEMY_KEYS || env.ALCHEMY_KEY);
+const alchemyUrls = D.chainId === MONAD_TESTNET
+  ? alchemyKeys.map((k) => `https://monad-testnet.g.alchemy.com/v2/${k}`)
+  : [];
+const alchemyMonad = alchemyUrls[0] || null;
+const rpc = env.RPC_URL || alchemyMonad || D.rpc;
+
+// Round-robin picker over the /rpc proxy upstreams the browser hits. Prefer keyed Alchemy on
+// Monad so frontend reads don't hammer the shared keyless RPC. RPC_PROXY_URL overrides.
+let _rr = 0;
+const proxyUrls = env.RPC_PROXY_URL ? [env.RPC_PROXY_URL] : alchemyUrls.length ? alchemyUrls : [rpc];
+const nextUpstream = () => proxyUrls[(_rr++) % proxyUrls.length];
+
 export const config = {
-  rpc: env.RPC_URL || D.rpc,
+  rpc,
+  rpcUpstreams: proxyUrls,
+  nextUpstream,
+  // How long (ms) to cache identical eth_call/read responses in the /rpc proxy. 0 disables.
+  rpcCacheMs: num("RPC_CACHE_MS", 3000),
   rpcBatch: num("RPC_BATCH", D.chainId === MONAD_TESTNET ? 1 : 5), // max JSON-RPC calls per HTTP request
   dataDir: env.DATA_DIR || path.join(here, "..", "data"),
   logFormat: env.LOG_FORMAT || "text", // text | json
