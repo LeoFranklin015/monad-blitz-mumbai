@@ -60,10 +60,28 @@ export const C = {
 };
 
 export async function loadSeries() {
+  // Prefer backend /markets — it already has full series data, no chain calls needed.
+  if (S.apiUp) {
+    try {
+      const r = await fetch(`${API_URL}/markets`);
+      const j = await r.json();
+      if (j.series?.length) {
+        const by = Object.fromEntries(D.stocks.map((s) => [s.address.toLowerCase(), s]));
+        S.series = j.series
+          .filter((x) => by[x.stock?.toLowerCase()])
+          .map((x) => ({
+            id: x.id, stock: by[x.stock.toLowerCase()],
+            expiry: x.expiry, kind: x.kind, strike: x.strike, strike2: x.strike2,
+            token: x.token, settled: x.settled,
+          }));
+        return S.series;
+      }
+    } catch { /* fall through to chain */ }
+  }
+  // Fallback: load from chain (only on first boot if backend is down).
   const p = C.protocol();
   const n = Number(await p.seriesCount());
   if (n === S.series.length && n) {
-    // only refresh settled flags on already known series
     const tail = S.series.filter((s) => s.expiry <= S.now && !s.settled);
     const raws = await Promise.all(tail.map((s) => p.getSeries(s.id)));
     tail.forEach((s, i) => (s.settled = raws[i].settled));
@@ -73,14 +91,10 @@ export async function loadSeries() {
   const raws = await Promise.all([...Array(n).keys()].map((i) => p.getSeries(i)));
   S.series = raws
     .map((r, id) => ({
-      id,
-      stock: by[r.underlying.toLowerCase()],
-      expiry: Number(r.expiry),
-      kind: Number(r.kind),
-      strike: fromUsd(r.strike),
-      strike2: fromUsd(r.strike2),
-      token: r.token,
-      settled: r.settled,
+      id, stock: by[r.underlying.toLowerCase()],
+      expiry: Number(r.expiry), kind: Number(r.kind),
+      strike: fromUsd(r.strike), strike2: fromUsd(r.strike2),
+      token: r.token, settled: r.settled,
     }))
     .filter((s) => s.stock);
   return S.series;
@@ -89,25 +103,29 @@ export async function loadSeries() {
 let _lastChainFetch = 0;
 
 export async function refreshMarket() {
-  // Use wall clock for market-hours check every tick — no RPC needed.
-  S.now = Math.floor(Date.now() / 1000);
-  const d = new Date(S.now * 1000), day = d.getUTCDay(), m = d.getUTCHours() * 60 + d.getUTCMinutes();
-  S.closed = day === 0 || day === 6 || m < 810 || m >= 1200;
+  // Use wall clock as initial timestamp — no RPC needed.
+  if (!S.now) S.now = Math.floor(Date.now() / 1000);
 
-  // Fetch backend /markets first — it already has fresh spot prices from the chain.
+  // Fetch backend /markets — has spot prices, series data, chain time, and market-closed flag.
   try {
     const r = await fetch(`${API_URL}/markets`);
     const j = await r.json();
-    S.fair = new Map(j.series.map((x) => [x.id, x]));
+    S.fair = new Map(j.series.map((x) => [x.id, { fair: x.fair, delta: x.delta, vol: x.vol }]));
     S.quotesPerSec = j.quotesPerSec;
     S.apiUp = true;
-    // Prefer backend spot prices to avoid extra oracle RPC calls.
+    if (j.now) S.now = j.now;
+    if (j.closed !== undefined) S.closed = j.closed;
     if (j.spots) D.stocks.forEach((s) => { if (j.spots[s.address]) S.spots[s.address] = j.spots[s.address]; });
+    // Reset chain-fetch timer if we got a fresh server timestamp — no need for a getBlock call.
+    if (j.now) _lastChainFetch = Date.now();
   } catch {
     S.apiUp = false;
+    // Fallback: compute market-closed from wall clock when backend is unreachable.
+    const d = new Date(S.now * 1000), day = d.getUTCDay(), m = d.getUTCHours() * 60 + d.getUTCMinutes();
+    S.closed = day === 0 || day === 6 || m < 810 || m >= 1200;
   }
 
-  // Only hit the chain for oracle spot + block timestamp every 30s.
+  // Only hit the chain directly every 30s (fallback when backend is down).
   if (Date.now() - _lastChainFetch < 30_000) return;
   _lastChainFetch = Date.now();
   try {

@@ -85,7 +85,11 @@ export function startApi() {
         const series = [];
         for (const s of state.series) {
           const f = state.fair.get(s.id);
-          if (f) series.push({ id: s.id, fair: f.price, delta: f.delta, vol: f.vol });
+          series.push({
+            id: s.id, fair: f?.price ?? null, delta: f?.delta ?? null, vol: f?.vol ?? null,
+            expiry: s.expiry, kind: s.kind, strike: s.strike, strike2: s.strike2,
+            token: s.token, stock: s.stock.address, settled: s.settled,
+          });
         }
         return reply(200, {
           now: state.now,
