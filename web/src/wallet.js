@@ -101,12 +101,57 @@ export async function sendCalls(calls) {
     }
     throw new Error("Timed out waiting for confirmation");
   }
+  if (W.kind === "injected" && (await atomicBatching())) return sendBatched(calls);
   let last;
   for (const c of calls) {
     const tx = await W.signer.sendTransaction({ to: c.to, data: c.data, value: c.value || 0n });
     last = await tx.wait();
   }
   return last;
+}
+
+// EIP-5792 batching for browser wallets: approval + action in one confirmation, atomically. MetaMask does this
+// through EIP-7702 (its delegator is deployed on Monad testnet) and offers the account upgrade in the same prompt.
+// Wallets without it keep the one-transaction-per-call path above.
+const atomicCache = new Map(); // `${address}:${chainId}` -> boolean
+export async function atomicBatching() {
+  if (W.kind !== "injected" || !window.ethereum) return false;
+  const key = `${W.address}:${D.chainId}`;
+  if (!atomicCache.has(key)) {
+    let ok = false;
+    try {
+      const caps = await window.ethereum.request({ method: "wallet_getCapabilities", params: [W.address, [hex(D.chainId)]] });
+      const st = (caps?.[hex(D.chainId)] || caps?.[String(D.chainId)])?.atomic?.status;
+      ok = st === "supported" || st === "ready";
+    } catch {}
+    atomicCache.set(key, ok);
+  }
+  return atomicCache.get(key);
+}
+
+async function sendBatched(calls) {
+  let res;
+  try {
+    res = await window.ethereum.request({
+      method: "wallet_sendCalls",
+      params: [{ version: "2.0.0", chainId: hex(D.chainId), from: W.address, atomicRequired: true,
+        calls: calls.map((c) => ({ to: c.to, data: c.data, value: c.value ? hex(c.value) : "0x0" })) }],
+    });
+  } catch (e) {
+    // The wallet turned batching down after advertising it (e.g. the user declined the account upgrade): send one by one.
+    if (e?.code === 4001) throw e;
+    atomicCache.set(`${W.address}:${D.chainId}`, false);
+    return sendCalls(calls);
+  }
+  const id = typeof res === "string" ? res : res.id;
+  for (let i = 0; i < 180; i++) {
+    const st = await window.ethereum.request({ method: "wallet_getCallsStatus", params: [id] });
+    const code = typeof st.status === "number" ? st.status : { PENDING: 100, CONFIRMED: 200 }[st.status] ?? 100;
+    if (code === 200) return { ...st, hash: st.receipts?.[st.receipts.length - 1]?.transactionHash };
+    if (code >= 400) throw new Error(code === 500 ? "Transaction reverted onchain" : "Transaction failed");
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("Timed out waiting for confirmation");
 }
 
 /// Approval calls needed before `spender` can pull `amount` of `token` (empty if already approved).
