@@ -27,16 +27,19 @@ if (!fs.existsSync(depPath)) {
 export const D = JSON.parse(fs.readFileSync(depPath, "utf8"));
 export const ABI = JSON.parse(fs.readFileSync(path.join(depDir, "abi.json"), "utf8"));
 export const LOCAL = D.chainId === 31337;
+const MONAD_TESTNET = 10143; // its public RPC rejects JSON-RPC batches
 
 // Local chain only: keys derived from Hardhat's public dev mnemonic. Never used on a live network.
 const DEV_MNEMONIC = "test test test test test test test test test test test junk";
 const dev = (i) => (LOCAL ? ethers.HDNodeWallet.fromPhrase(DEV_MNEMONIC, undefined, `m/44'/60'/0'/0/${i}`).privateKey : null);
 
+const simulateDefault = env.SIMULATE ? env.SIMULATE === "1" : LOCAL && D.oracleKind === "reporter";
 const list = (s) => (s || "").split(",").map((x) => x.trim()).filter(Boolean);
 const num = (k, d) => (env[k] !== undefined && env[k] !== "" ? Number(env[k]) : d);
 
 export const config = {
   rpc: env.RPC_URL || D.rpc,
+  rpcBatch: num("RPC_BATCH", D.chainId === MONAD_TESTNET ? 1 : 5), // max JSON-RPC calls per HTTP request
   dataDir: env.DATA_DIR || path.join(here, "..", "data"),
   logFormat: env.LOG_FORMAT || "text", // text | json
 
@@ -51,7 +54,11 @@ export const config = {
   tickMs: num("TICK_MS", LOCAL ? 2000 : 1000),
   keeperMs: num("KEEPER_MS", 5000),
   hedgerMs: num("HEDGER_MS", 5000),
-  simulate: env.SIMULATE ? env.SIMULATE === "1" : LOCAL && D.oracleKind === "reporter",
+  // reporter spot source: "kuru" pushes each stock's Kuru mid price (the book HedgedMaker hedges on),
+  // "sim" a random walk (local demo), "none" leaves spot alone (Pyth deployments)
+  priceSource: env.PRICE_SOURCE || (D.kuruAdapter ? "kuru" : simulateDefault ? "sim" : "none"),
+  kuruPushBps: num("KURU_PUSH_BPS", 5), // push when the mid moves this much, or every KURU_PUSH_MAX_SEC
+  kuruPushMaxSec: num("KURU_PUSH_MAX_SEC", 60),
 
   // api
   port: num("PORT", num("RFQ_PORT", 8787)),
@@ -63,8 +70,9 @@ export const config = {
 
   // quoting
   requoteBps: num("REQUOTE_BPS", 100),
-  askSize: num("ASK_SIZE", 25),
-  bidSize: num("BID_SIZE", 15),
+  // Kuru's testnet books are thin (about $450 a side), so testnet makers quote 1 option at a time
+  askSize: num("ASK_SIZE", D.chainId === MONAD_TESTNET ? 1 : 25),
+  bidSize: num("BID_SIZE", D.chainId === MONAD_TESTNET ? 1 : 15),
 
   // risk
   maxStaleSec: num("MAX_STALE_SEC", 120), // oracle spot older than this while the market is open pulls all quotes

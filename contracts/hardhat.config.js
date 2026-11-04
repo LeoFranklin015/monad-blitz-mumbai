@@ -34,7 +34,9 @@ module.exports = {
   },
   paths: { sources: "./src" },
   networks: {
-    hardhat: { chainId: 31337 },
+    // Fork tests (`FORK_RPC=https://testnet-rpc.monad.xyz npx hardhat test test/*.fork.test.js`) reset onto Monad
+    // testnet; Hardhat needs a hardfork history for a chain id it doesn't know.
+    hardhat: { chainId: 31337, chains: { 10143: { hardforkHistory: { cancun: 0 } } } },
     localhost: { url: process.env.LOCAL_RPC || "http://127.0.0.1:8545" },
     // JAW passkey accounts are supported on Monad mainnet and Base Sepolia, not Monad testnet.
     monad: { url: process.env.MONAD_RPC || "https://rpc.monad.xyz", chainId: 143, accounts },

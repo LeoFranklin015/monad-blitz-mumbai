@@ -10,7 +10,9 @@ export { log };
 // Use a FetchRequest with retryFunc disabled so 429s throw immediately instead of hanging forever.
 const _req = new ethers.FetchRequest(config.rpc);
 _req.retryFunc = async () => false; // never retry; callers handle errors themselves
-export const provider = new BoundedJsonRpcProvider(_req, D.chainId, { batchMaxCount: 5, staticNetwork: true, cacheTimeout: -1 });
+// The public Monad testnet RPC (testnet-rpc.monad.xyz) rejects every JSON-RPC batch, even a batch of one
+// ("Restricted JSON RPC method"), so batching is off by default there. RPC_BATCH overrides (never above 5 on drpc).
+export const provider = new BoundedJsonRpcProvider(_req, D.chainId, { batchMaxCount: config.rpcBatch, staticNetwork: true, cacheTimeout: -1 });
 provider.pollingInterval = 500;
 
 export const usdFrom = (v) => Number(ethers.formatUnits(v, 6));
