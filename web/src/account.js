@@ -48,7 +48,8 @@ let bal = { addr: null, wei: null };
 
 const balText = () => (bal.addr === W.address && bal.wei != null ? `${Number(ethers.formatEther(bal.wei)).toFixed(bal.wei > 0n && bal.wei < 10n ** 16n ? 4 : 2)} ${nativeSymbol()}` : `… ${nativeSymbol()}`);
 const LOW_GAS = 10n ** 16n; // 0.01 native: below this a trade can't pay gas
-const lowGas = (wei) => W.kind === "mera" && !isLocal() && wei < LOW_GAS;
+// Any wallet on a live chain: a fresh MetaMask account is as stuck without gas as a fresh passkey account.
+const lowGas = (wei) => !isLocal() && wei < LOW_GAS;
 const needsGas = () => bal.addr === W.address && bal.wei != null && lowGas(bal.wei);
 const hasFaucet = () => D.chainId === 10143;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -86,7 +87,9 @@ function renderAccountMenu(el) {
   const mera = W.kind === "mera";
   const sym = nativeSymbol();
   el.innerHTML = html`
-    ${mera && needsGas() ? `<button class="gas-chip" id="gasBtn" aria-haspopup="true">${ICON.alert}<span>Needs ${sym} for gas</span></button>` : ""}
+    ${needsGas() ? (D.chainId !== 143
+      ? `<button class="gas-chip gas-chip--funds" id="gasFundsBtn" title="Sends test tokens and ${sym} for gas to this wallet">${ICON.gift}<span>Test funds</span></button>`
+      : `<button class="gas-chip" id="gasBtn" aria-haspopup="true">${ICON.alert}<span>Needs ${sym} for gas</span></button>`) : ""}
     <div class="acct">
       <button class="acct-pill" id="acctBtn" aria-haspopup="true" aria-expanded="${menuOpen}" title="${W.address}">
         ${identicon(W.address)}
@@ -123,6 +126,7 @@ function renderAccountMenu(el) {
   };
   $("#acctBtn").onclick = (e) => { e.stopPropagation(); toggle(); };
   if ($("#gasBtn")) $("#gasBtn").onclick = (e) => { e.stopPropagation(); toggle(true); };
+  if ($("#gasFundsBtn")) $("#gasFundsBtn").onclick = (e) => { e.stopPropagation(); faucet(); };
   $("#acctMenu").onclick = (e) => e.stopPropagation();
   $("#copyAddr").onclick = async () => {
     try {
@@ -334,12 +338,14 @@ function openExport() {
 
 /// Real-token deployment (Kuru's tokens): ask the backend faucet to send a little of each token plus gas money.
 export async function claimFaucet(after) {
+  let sent = null;
   await act("Sending test funds", async () => {
     const r = await fetch(`${API_URL}/faucet`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: W.address }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(j.error || `faucet ${r.status}`);
-    toast(`Sent: ${j.sent.map((x) => x.label).join(", ")}`, 6000);
+    sent = j.sent.map((x) => x.label).join(", ");
   }, after);
+  if (sent) toast(`Sent to your wallet: ${sent}`, 7000); // after act's generic "done", so the details stay on screen
 }
 
 async function faucet() {

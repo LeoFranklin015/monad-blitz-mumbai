@@ -1060,3 +1060,5 @@ header .brand img { height: 22px; display: block; }
 .badge-passkey--wallet { color: var(--muted); border-color: var(--line); }
 .acct-menu__row select { background: var(--bg); color: var(--text); border: 1px solid var(--line); font-family: var(--mono); font-size: 12px; padding: 4px 6px; max-width: 170px; }
 @media (max-width: 720px) { header { flex-wrap: wrap; padding: 10px 14px; gap: 10px; } #nav { height: auto; } #nav button { padding: 8px 8px; } }
+.gas-chip--funds { color: var(--text); border-color: var(--accent); background: rgba(140, 82, 255, .16); }
+.gas-chip--funds:hover { background: rgba(140, 82, 255, .28); }
