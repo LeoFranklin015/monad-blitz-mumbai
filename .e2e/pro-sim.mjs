@@ -62,6 +62,27 @@ try {
   const book = await page.textContent("#pro-asks");
   check(!/no asks/i.test(book), `auto-picked strike has asks on the book: ${book.replace(/\s+/g, " ").trim().slice(0, 60)}`);
 
+  // Custom size: type 0.3, the chips deselect, the button and the simulator follow (payout x3 vs 0.1).
+  await page.fill("#pro-pick-custom", "0.3");
+  await page.press("#pro-pick-custom", "Enter");
+  await page.waitForTimeout(2500);
+  const onChips = await page.$$eval(".pro-pick__size.on", (e) => e.length);
+  check(onChips === 0 && (await page.$eval("#pro-pick-custom", (e) => e.classList.contains("on"))), "custom size selected, preset chips off");
+  const btn3 = (await page.textContent("#pro-action-btn")).trim();
+  check(/0\.3/.test(btn3) || /Connect/.test(btn3), `action button follows the custom size: ${btn3}`);
+  await page.fill("#pro-sim .pro-sim-px", String(P));
+  await page.dispatchEvent("#pro-sim .pro-sim-px", "change");
+  await page.waitForTimeout(800);
+  const worth3 = await page.$$eval("#pro-sim .pro-form__stat-row", (els) => els.find((e) => e.querySelector(".k").textContent.trim() === "Worth")?.querySelector(".v").textContent);
+  check(Math.abs(num(worth3) - expectUsd * 3) < 0.02, `simulator at 0.3: worth ${worth3} = 3 × ${expectUsd.toFixed(2)}`);
+  await page.fill("#pro-pick-custom", "50");
+  await page.press("#pro-pick-custom", "Enter");
+  await page.waitForSelector(".pro-pick__hint", { timeout: 20000 }).catch(() => {});
+  const hint = await page.textContent(".pro-pick__hint").catch(() => null);
+  check(!!hint && /available/.test(hint), `too-large size shows what's available: ${hint}`);
+  await page.click(".pro-pick__size[data-n='0.1']");
+  await page.waitForTimeout(2000);
+
   // Quick chips: "+5%" moves the price and redraws.
   await page.click(".pro-sim__chip:nth-child(4)");
   await page.waitForTimeout(400);

@@ -935,3 +935,8 @@ a.lp-prod__r:hover .lp-prod__go { color: var(--text); }
 .pro-pick__size { font-family: var(--mono); font-size: 14px; padding: 9px 0; background: var(--bg); border: 1px solid var(--line); color: var(--text); cursor: pointer; }
 .pro-pick__size.on { border-color: var(--accent); background: rgba(140, 82, 255, .14); }
 .pro-pick__size:disabled { color: var(--dim); opacity: .45; cursor: not-allowed; }
+.pro-pick__sizes { grid-template-columns: repeat(3, 1fr) 1.4fr; }
+.pro-pick__custom { font-family: var(--mono); font-size: 14px; padding: 9px 10px; background: var(--bg); border: 1px solid var(--line); color: var(--text); min-width: 0; outline: none; }
+.pro-pick__custom::placeholder { color: var(--dim); }
+.pro-pick__custom:focus, .pro-pick__custom.on { border-color: var(--accent); background: rgba(140, 82, 255, .14); }
+.pro-pick__hint { font-size: 12px; color: var(--warn); }

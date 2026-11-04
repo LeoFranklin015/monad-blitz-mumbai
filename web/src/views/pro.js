@@ -786,7 +786,14 @@ export function pro(root, refreshAll) {
     const sel = cards.find((c) => c.s.id === T.seriesId);
     // Sizes the book can fill for the selected strike.
     const fills = sel ? await Promise.all(PICK_SIZES.map((n) => proto.quoteBuy(sel.s.id, sh(n)).then((r) => r[1] >= sh(n)).catch(() => false))) : PICK_SIZES.map(() => false);
-    if (!PICK_SIZES.includes(T.amount) || !fills[PICK_SIZES.indexOf(T.amount)]) T.amount = PICK_SIZES[Math.max(0, fills.lastIndexOf(true) >= 0 ? fills.indexOf(true) : 0)];
+    // A typed custom size is kept as typed; otherwise snap to the smallest preset the book can fill.
+    if (!T.customSize && (!PICK_SIZES.includes(T.amount) || !fills[PICK_SIZES.indexOf(T.amount)])) T.amount = PICK_SIZES[Math.max(0, fills.lastIndexOf(true) >= 0 ? fills.indexOf(true) : 0)];
+    // How much the selected strike can fill right now, for the custom-size hint.
+    let maxFill = 0;
+    if (sel && T.customSize) {
+      const [, f] = await proto.quoteBuy(sel.s.id, sh(T.amount)).catch(() => [0n, 0n]);
+      maxFill = fromSh(f);
+    }
     const blurb = T.kind === 0 ? "Profit if NVDAx rises. Worst case: what you pay." : "Sell at a fixed price, even on Saturday. Worst case: what you pay.";
     el.innerHTML = html`
       <div class="pro-pick__kinds">
@@ -800,18 +807,35 @@ export function pro(root, refreshAll) {
       </div>
       <div class="pro-pick__label">Size</div>
       <div class="pro-pick__sizes">
-        ${PICK_SIZES.map((n, i) => `<button class="pro-pick__size ${n === T.amount ? "on" : ""}" data-n="${n}" ${fills[i] ? "" : "disabled"}>${n}</button>`).join("")}
-      </div>`;
+        ${PICK_SIZES.map((n, i) => `<button class="pro-pick__size ${!T.customSize && n === T.amount ? "on" : ""}" data-n="${n}" ${fills[i] ? "" : "disabled"}>${n}</button>`).join("")}
+        <input class="pro-pick__custom ${T.customSize ? "on" : ""}" id="pro-pick-custom" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="Custom" value="${T.customSize ? T.amount : ""}" aria-label="Custom size" />
+      </div>
+      ${T.customSize && sel && maxFill + 1e-9 < T.amount ? `<div class="pro-pick__hint">Only ${fmt.sh(maxFill, 2)} available at $${sel.s.strike} right now.</div>` : ""}`;
     updateSeriesLabel();
     el.onclick = (e) => {
       const k = e.target.closest("[data-kind]"), st = e.target.closest("[data-id]"), n = e.target.closest("[data-n]");
       if (k) { T.kind = Number(k.dataset.kind); T.seriesId = null; T.simPx = null; }
       else if (st) T.seriesId = Number(st.dataset.id);
-      else if (n && !n.disabled) { T.amount = Number(n.dataset.n); const a = q("#pro-amt"); if (a) a.value = T.amount; }
+      else if (n && !n.disabled) { T.amount = Number(n.dataset.n); T.customSize = false; const a = q("#pro-amt"); if (a) a.value = T.amount; }
       else return;
       updateSeriesLabel();
       renderPicker().then(() => { renderBook().catch(() => {}); debouncedPreview(); }).catch(() => {});
     };
+    // Custom size: applied when typing pauses or on Enter/blur, so the field keeps focus while you type.
+    const custom = el.querySelector("#pro-pick-custom");
+    let typing = null;
+    const applyCustom = () => {
+      const v = Number(custom.value);
+      if (!(v > 0)) return;
+      T.amount = Math.round(v * 1e6) / 1e6; T.customSize = true;
+      const a = q("#pro-amt"); if (a) a.value = T.amount;
+      el.querySelectorAll(".pro-pick__size").forEach((b) => b.classList.remove("on"));
+      custom.classList.add("on");
+      debouncedPreview();
+    };
+    custom.oninput = () => { clearTimeout(typing); typing = setTimeout(applyCustom, 400); };
+    custom.onkeydown = (e) => { if (e.key === "Enter") { clearTimeout(typing); applyCustom(); renderPicker().catch(() => {}); } };
+    custom.onblur = () => { clearTimeout(typing); if (Number(custom.value) > 0) { applyCustom(); renderPicker().catch(() => {}); } };
   }
 
   /// Pro picked the strike itself and nobody is selling it at the ticket size: switch to the closest strike that has asks.
