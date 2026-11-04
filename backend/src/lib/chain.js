@@ -1,6 +1,7 @@
 import { ethers } from "ethers";
 import { D, ABI, config } from "../config.js";
 import { log, metrics } from "./obs.js";
+import { BoundedJsonRpcProvider } from "./rpc.js";
 
 export { log };
 
@@ -9,7 +10,7 @@ export { log };
 // Use a FetchRequest with retryFunc disabled so 429s throw immediately instead of hanging forever.
 const _req = new ethers.FetchRequest(config.rpc);
 _req.retryFunc = async () => false; // never retry; callers handle errors themselves
-export const provider = new ethers.JsonRpcProvider(_req, D.chainId, { batchMaxCount: 5, staticNetwork: true });
+export const provider = new BoundedJsonRpcProvider(_req, D.chainId, { batchMaxCount: 5, staticNetwork: true, cacheTimeout: -1 });
 provider.pollingInterval = 500;
 
 export const usdFrom = (v) => Number(ethers.formatUnits(v, 6));
@@ -21,6 +22,7 @@ const signers = new Map();
 /// One nonce-managed signer per key, shared by every service that uses it.
 export function signer(key) {
   if (!key) return null;
+  key = key.toLowerCase();
   if (!signers.has(key)) {
     const s = new ethers.NonceManager(new ethers.Wallet(key, provider));
     s._queue = Promise.resolve();
@@ -45,15 +47,18 @@ export function contracts(runner = provider) {
 }
 
 /// Send a tx and wait for it. Submissions from one signer are serialized so nonces never collide;
-/// waiting for receipts happens outside the queue. On a failed submission the nonce is resynced.
+/// receipts stay inside the queue so a failed submission cannot reset an in-flight nonce.
 export async function send(s, label, fn) {
-  let tx;
   const prev = s._queue;
   let release;
   s._queue = new Promise((r) => (release = r));
   try {
     await prev;
-    tx = await fn();
+    s.reset(); // Fetch the pending nonce again; do not reuse a stale local counter.
+    const tx = await fn();
+    const rc = await tx.wait();
+    metrics.inc("tx_sent_total", { label: label.split(" ")[0] });
+    return rc;
   } catch (e) {
     s.reset();
     metrics.inc("tx_failed_total", { label: label.split(" ")[0] });
@@ -61,15 +66,6 @@ export async function send(s, label, fn) {
     return null;
   } finally {
     release();
-  }
-  try {
-    const rc = await tx.wait();
-    metrics.inc("tx_sent_total", { label: label.split(" ")[0] });
-    return rc;
-  } catch (e) {
-    metrics.inc("tx_failed_total", { label: label.split(" ")[0] });
-    log(`! ${label} reverted: ${(e.shortMessage || e.reason || e.message || "").slice(0, 160)}`);
-    return null;
   }
 }
 
