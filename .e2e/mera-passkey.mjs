@@ -86,7 +86,7 @@ async function main() {
   check("fresh account starts with 0 gas", (await provider.getBalance(addr)) === 0n);
 
   // 2. Test funds: 1 ETH gas from the deployer + mints, signed by the passkey account
-  await page.click("#faucetBtn");
+  await page.click("#acctBtn"); await page.click("#faucetBtn"); // Test funds lives in the account menu
   await toastSays(page, /Minting test funds done/);
   const eth = await provider.getBalance(addr);
   const usdc = await erc20(dep.usdc).balanceOf(addr);
@@ -125,7 +125,7 @@ async function main() {
   await page.click("#xDone");
 
   // 5. disconnect → connect → Passkey signs straight back in
-  await page.click("#discBtn");
+  await page.click("#acctBtn"); await page.click("#menuDisc"); // Disconnect lives in the account menu
   await page.waitForSelector("#connectBtn");
   check("disconnected", (await page.evaluate(() => window.__app.W.address)) === null);
   await page.click("#connectBtn");
@@ -141,7 +141,7 @@ async function main() {
   check("still holds the Upside after sign-in", (await optionBalances(addr2)).length === 1);
 
   // 6. A passkey manager without PRF gets plain copy and a Retry, not a stack trace.
-  await page.click("#discBtn");
+  await page.click("#acctBtn"); await page.click("#menuDisc"); // Disconnect lives in the account menu
   await page.evaluate(() => localStorage.removeItem("wknd.mera.credential"));
   await cdp.send("WebAuthn.removeVirtualAuthenticator", { authenticatorId });
   await cdp.send("WebAuthn.addVirtualAuthenticator", {

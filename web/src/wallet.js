@@ -177,6 +177,40 @@ export async function connectMera(mode, onPhase = () => {}) {
   return W.address;
 }
 
+/// Ask for the passkey before a passkey account sends anything: the held session signs, but the user confirms
+/// each action with Face ID / Touch ID, and it must be this account's passkey.
+export async function confirmWithPasskey() {
+  const known = storedCredential();
+  const got = await usePasskey(location.hostname, known?.address === W.address ? known : undefined);
+  try {
+    const { session, account } = openSession(got.prfOutput);
+    session.end();
+    if (account.address !== W.address) throw new Error("That passkey belongs to a different account");
+  } finally {
+    got.prfOutput.fill(0);
+  }
+}
+
+/// Wait until a sent transaction is mined. A failed receipt read (rate limit, proxy hiccup) doesn't fail the action:
+/// keep checking by hash, because the transaction is already on its way.
+async function waitMined(tx) {
+  try {
+    const rc = await tx.wait();
+    if (rc) return rc;
+  } catch (e) {
+    if (e?.code === "CALL_EXCEPTION" || e?.receipt?.status === 0) throw e; // it was mined and reverted
+  }
+  for (let i = 0; i < 90; i++) {
+    const rc = await read.getTransactionReceipt(tx.hash).catch(() => null);
+    if (rc) {
+      if (rc.status === 0) throw new Error("Transaction reverted onchain");
+      return rc;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error(`Still waiting for ${tx.hash.slice(0, 10)}… to be mined. Check Portfolio in a minute.`);
+}
+
 /// Fresh passkey prompt for the 24 words; the PRF output is wiped before returning.
 export async function exportRecoveryPhrase() {
   if (W.kind !== "mera") throw new Error("Only passkey accounts have a recovery phrase here");
@@ -243,11 +277,12 @@ export async function sendCalls(calls) {
     throw new Error("Timed out waiting for confirmation");
   }
   if (W.kind === "injected" && (await atomicBatching())) return sendBatched(calls);
+  if (W.kind === "mera") await confirmWithPasskey(); // every passkey transaction is confirmed with Face ID / Touch ID
   let last;
   try {
     for (const c of calls) {
       const tx = await W.signer.sendTransaction({ to: c.to, data: c.data, value: c.value || 0n });
-      last = await tx.wait();
+      last = await waitMined(tx);
     }
   } catch (e) {
     if (isMeraError(e) && e.code === "SESSION_ENDED") await disconnect(); // back to Connect; the toast says sign in again
