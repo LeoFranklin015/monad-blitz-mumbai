@@ -28,6 +28,7 @@ const types = {
 };
 
 const hits = new Map(); // ip -> [timestamps]
+const ohlcCache = new Map(); // "SYMBOL:range:interval" -> { data, expiresAt }
 function limited(ip) {
   const now = Date.now();
   const arr = (hits.get(ip) || []).filter((t) => now - t < 60_000);
@@ -126,12 +127,78 @@ export function startApi() {
         metrics.inc("rfq_signed_total");
         return reply(200, { rfq, signature, pricePerOption: price, premium: price * amount, expiresIn: config.rfqTtlSec });
       }
+      if (url.pathname === "/ohlc") {
+        const rawSymbol = url.searchParams.get("symbol") || "";
+        const range = url.searchParams.get("range") || "1y";
+        const interval = url.searchParams.get("interval") || "1d";
+        // strip trailing "x" for Yahoo compatibility: "NVDAx" -> "NVDA"
+        const symbol = rawSymbol.replace(/x$/i, "").toUpperCase();
+        if (!symbol) return reply(400, { error: "symbol required" });
+
+        const cacheKey = `${symbol}:${range}:${interval}`;
+        const cached = ohlcCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          return reply(200, cached.data);
+        }
+
+        let yahooRes;
+        try {
+          yahooRes = await fetch(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`,
+            { headers: { "User-Agent": "Mozilla/5.0 (compatible; weekend-options/1.0)" } }
+          );
+        } catch (_) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          return reply(502, { error: "upstream failed" });
+        }
+
+        if (!yahooRes.ok) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          return reply(502, { error: "upstream failed" });
+        }
+
+        let json;
+        try {
+          json = await yahooRes.json();
+        } catch (_) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          return reply(502, { error: "upstream failed" });
+        }
+
+        const result = json?.chart?.result?.[0];
+        if (!result) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          return reply(502, { error: "upstream failed" });
+        }
+
+        const timestamps = result.timestamp || [];
+        const q = result.indicators?.quote?.[0] || {};
+        const opens = q.open || [];
+        const highs = q.high || [];
+        const lows = q.low || [];
+        const closes = q.close || [];
+        const volumes = q.volume || [];
+
+        const data = [];
+        for (let i = 0; i < timestamps.length; i++) {
+          const o = opens[i], h = highs[i], l = lows[i], c = closes[i];
+          // filter out null/NaN candles
+          if (o == null || h == null || l == null || c == null) continue;
+          data.push({ time: timestamps[i], open: o, high: h, low: l, close: c, volume: volumes[i] ?? 0 });
+        }
+
+        ohlcCache.set(cacheKey, { data, expiresAt: Date.now() + 5 * 60 * 1000 });
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        return reply(200, data);
+      }
+
       reply(404, { error: "not found" });
     } catch (e) {
       metrics.inc("http_errors_total");
       reply(500, { error: e.shortMessage || e.message });
     }
   });
-  server.listen(config.port, () => log(`api: http://0.0.0.0:${config.port} (/health /status /metrics /markets /rfq)`));
+  server.listen(config.port, () => log(`api: http://0.0.0.0:${config.port} (/health /status /metrics /markets /rfq /ohlc)`));
   return server;
 }

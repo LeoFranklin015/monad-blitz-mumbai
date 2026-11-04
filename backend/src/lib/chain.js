@@ -4,7 +4,9 @@ import { log, metrics } from "./obs.js";
 
 export { log };
 
-export const provider = new ethers.JsonRpcProvider(config.rpc, D.chainId, { batchMaxCount: 50, staticNetwork: true });
+// Monad testnet RPCs cap eth_call concurrency: drpc accepts batches but a 50-call batch
+// overflows its thread pool ("queue size exceeded"). Small batches (≤5) are tolerated reliably.
+export const provider = new ethers.JsonRpcProvider(config.rpc, D.chainId, { batchMaxCount: 5, staticNetwork: true });
 provider.pollingInterval = 500;
 
 export const usdFrom = (v) => Number(ethers.formatUnits(v, 6));
