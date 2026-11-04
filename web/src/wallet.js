@@ -8,7 +8,7 @@
 //  - Any injected wallet (MetaMask, Rabby).
 import { ethers } from "ethers";
 import { D, read, isLocal, call, localRpc, nativeBalance } from "./chain.js";
-import { MeraSigner, openSession, createPasskey, usePasskey, storedCredential, saveCredential, recoveryPhrase } from "./mera.js";
+import { MeraSigner, isMeraError, openSession, createPasskey, usePasskey, storedCredential, saveCredential, recoveryPhrase } from "./mera.js";
 import { JAW_API_KEY, PAYMASTER_URL } from "./config.js";
 
 export const W = { kind: null, address: null, signer: null, jaw: null, listeners: [] };
@@ -137,14 +137,14 @@ function watchIdle() {
       disconnect(false).then(() => {
         W.idleEnded = true;
         emit();
-      });
+      }, console.error);
     }
   }, 30_000);
 }
 
-/// Dev chain only: top up native gas from the deployer when the account is low.
-export async function fundGasLocal(address, min = ethers.parseEther("0.5")) {
-  if (!isLocal() || (await nativeBalance(address)) >= min) return false;
+/// Dev chain only: send the account 1 ETH of gas from the deployer.
+export async function fundGasLocal(address) {
+  if (!isLocal()) return false;
   const { signer } = await devSigner();
   await (await signer.sendTransaction({ to: address, value: ethers.parseEther("1") })).wait();
   return true;
@@ -177,9 +177,14 @@ export async function sendCalls(calls) {
     throw new Error("Timed out waiting for confirmation");
   }
   let last;
-  for (const c of calls) {
-    const tx = await W.signer.sendTransaction({ to: c.to, data: c.data, value: c.value || 0n });
-    last = await tx.wait();
+  try {
+    for (const c of calls) {
+      const tx = await W.signer.sendTransaction({ to: c.to, data: c.data, value: c.value || 0n });
+      last = await tx.wait();
+    }
+  } catch (e) {
+    if (isMeraError(e) && e.code === "SESSION_ENDED") await disconnect(); // back to Connect; the toast says sign in again
+    throw e;
   }
   return last;
 }

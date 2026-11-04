@@ -116,9 +116,7 @@ export class MeraSigner extends AbstractSigner {
   async populateTransaction(tx) {
     if (tx.nonce == null) {
       const pending = await this.provider.getTransactionCount(this.address, "pending");
-      const nonce = Math.max(pending, this.#next);
-      this.#next = nonce + 1;
-      tx = { ...tx, nonce };
+      tx = { ...tx, nonce: Math.max(pending, this.#next) };
     }
     if (tx.gasLimit == null) {
       const est = await this.estimateGas({ ...tx, from: this.address });
@@ -127,12 +125,9 @@ export class MeraSigner extends AbstractSigner {
     return super.populateTransaction(tx);
   }
   async sendTransaction(tx) {
-    try {
-      return await super.sendTransaction(tx);
-    } catch (e) {
-      this.#next = 0; // nothing was broadcast, go back to the chain's count
-      throw e;
-    }
+    const sent = await super.sendTransaction(tx);
+    this.#next = Math.max(this.#next, sent.nonce + 1); // only a broadcast tx consumes a nonce
+    return sent;
   }
   async signTransaction(tx) {
     let t = tx;

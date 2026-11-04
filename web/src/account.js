@@ -46,7 +46,11 @@ let menuOpen = false;
 let bal = { addr: null, wei: null };
 
 const balText = () => (bal.addr === W.address && bal.wei != null ? `${Number(ethers.formatEther(bal.wei)).toFixed(bal.wei > 0n && bal.wei < 10n ** 16n ? 4 : 2)} ${nativeSymbol()}` : `… ${nativeSymbol()}`);
-const needsGas = () => W.kind === "mera" && !isLocal() && bal.addr === W.address && bal.wei === 0n;
+const LOW_GAS = 10n ** 16n; // 0.01 native: below this a trade can't pay gas
+const lowGas = (wei) => W.kind === "mera" && !isLocal() && wei < LOW_GAS;
+const needsGas = () => bal.addr === W.address && bal.wei != null && lowGas(bal.wei);
+const hasFaucet = () => D.chainId === 10143;
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export function renderAccount() {
   const el = $("#account");
@@ -103,8 +107,8 @@ function renderMeraAccount(el) {
         <button class="acct-menu__addr mono" id="copyAddr" title="Copy address">${W.address}<span class="acct-menu__copy">${ICON.copy}<em>Copy</em></span></button>
         <div class="acct-menu__row"><span>Gas balance</span><span class="mono" id="menuBal">${balText()}</span></div>
         ${needsGas() ? html`<div class="acct-menu__gas">
-            <p><b>Needs ${sym} for gas.</b> A new passkey account starts empty. Send a little ${sym} to the address above, or get some from the faucet.</p>
-            <a class="acct-menu__link" href="${FAUCET_URL}" target="_blank" rel="noopener">Open Monad faucet ${ICON.out}</a>
+            <p><b>Needs ${sym} for gas.</b> A new passkey account starts empty. Send a little ${sym} to the address above${hasFaucet() ? ", or get some from the faucet" : ""}.</p>
+            ${hasFaucet() ? `<a class="acct-menu__link" href="${FAUCET_URL}" target="_blank" rel="noopener">Open Monad faucet ${ICON.out}</a>` : ""}
           </div>` : ""}
         <button class="acct-menu__item" id="exportBtn" role="menuitem">${ICON.key}<span>Export recovery phrase</span></button>
         <button class="acct-menu__item acct-menu__item--out" id="menuDisc" role="menuitem">${ICON.back}<span>Sign out</span></button>
@@ -144,7 +148,7 @@ function renderMeraAccount(el) {
   const addr = W.address;
   nativeBalance(addr).then((wei) => {
     if (W.address !== addr) return;
-    const gasChanged = needsGas() !== (W.kind === "mera" && !isLocal() && wei === 0n);
+    const gasChanged = needsGas() !== lowGas(wei);
     const first = bal.addr !== addr;
     bal = { addr, wei };
     if (first || gasChanged) return renderAccount();
@@ -256,7 +260,7 @@ export function openConnect() {
       <div class="pk-stage pk-stage--error" role="alert">
         <div class="pk-orb">${ICON.alert}</div>
         <h2 id="mTitle">${title}</h2>
-        <p>${errMsg(e)}</p>
+        <p>${esc(errMsg(e))}</p>
       </div>
       <div class="pk-choice">
         <button class="primary wide" id="mRetry">Retry</button>
@@ -302,7 +306,7 @@ function openExport() {
       <div class="connect-modal__intro"><h2 id="mTitle">Export recovery phrase</h2>
         <p>These 24 words are this account. Imported into MetaMask or Rabby they open the same address, <span class="mono">${fmt.addr(W.address)}</span>.</p></div>
       <div class="pk-warn">${ICON.alert}<p>Anyone who sees them can take everything in the account. Check nobody is watching your screen, and never paste them into a website.</p></div>
-      ${err ? `<p class="pk-err" role="alert">${errMsg(err)}</p>` : ""}
+      ${err ? `<p class="pk-err" role="alert">${esc(errMsg(err))}</p>` : ""}
       <div class="pk-choice">
         <button class="primary wide" id="xConfirm">${ICON.passkey}<span>${err ? "Retry with passkey" : "Show phrase with passkey"}</span></button>
         <button class="wide ghost" id="xCancel">Cancel</button>
@@ -325,20 +329,9 @@ function openExport() {
     m.innerHTML = modalShell(html`
       <div class="connect-modal__intro"><h2 id="mTitle">Your recovery phrase</h2><p>Write these down in order. Close this window when you're done.</p></div>
       <ol class="phrase mono" id="phrase">${words.map((w) => `<li>${w}</li>`).join("")}</ol>
-      <div class="pk-choice pk-choice--row">
-        <button class="wide" id="xCopy">${ICON.copy}<span>Copy</span></button>
-        <button class="primary wide" id="xDone">Done</button>
-      </div>`);
+      <div class="pk-choice"><button class="primary wide" id="xDone">Done</button></div>`);
     wire();
     $("#xDone").onclick = close;
-    $("#xCopy").onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(words.join(" "));
-        $("#xCopy span").textContent = "Copied";
-      } catch {
-        toast("Copy failed. Write the words down instead.");
-      }
-    };
   };
   confirm();
   m.hidden = false;
@@ -346,7 +339,7 @@ function openExport() {
 
 async function faucet() {
   await act("Minting test funds", async () => {
-    if (await fundGasLocal(W.address)) toast(`Sent 1 ${nativeSymbol()} for gas. Minting test funds…`, 120000);
+    if (W.kind === "mera" && (await fundGasLocal(W.address))) toast(`Sent 1 ${nativeSymbol()} for gas. Minting test funds…`, 120000);
     const calls = [call(D.usdc, "MockERC20", "mint", [W.address, usd(100_000)])];
     for (const s of D.stocks) calls.push(call(s.address, "MockXStock", "mint", [W.address, sh(100)]));
     await sendCalls(calls);

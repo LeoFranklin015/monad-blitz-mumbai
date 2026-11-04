@@ -152,7 +152,6 @@ svg { flex: none; }
 .connect-sep::before, .connect-sep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
 
 .pk-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
-.pk-choice--row { flex-direction: row; }
 .pk-choice button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 14px; }
 .pk-choice button svg { width: 16px; height: 16px; }
 .pk-choice__main { font-size: 13px; }
