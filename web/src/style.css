@@ -1048,3 +1048,15 @@ a.lp-prod__r:hover .lp-prod__go { color: var(--text); }
 .soon__cta { align-self: flex-start; margin-top: 6px; padding: 12px 20px; background: var(--accent); color: #fff; font-family: var(--mono); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }
 .soon__cta:hover { filter: brightness(1.1); }
 .lp-prod__r--soon { opacity: .7; }
+
+/* ── Header bar: logo, nav, one account button with a menu ─────────────── */
+header { min-height: 60px; padding: 0 20px; gap: 22px; flex-wrap: nowrap; }
+header .brand img { height: 22px; display: block; }
+#nav { display: flex; align-items: stretch; gap: 2px; height: 60px; }
+#nav button { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 0 12px; color: var(--muted); font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+#nav button:hover { color: var(--text); }
+#nav button.on { color: var(--text); border-bottom-color: var(--accent); }
+#account { display: flex; align-items: center; gap: 8px; }
+.badge-passkey--wallet { color: var(--muted); border-color: var(--line); }
+.acct-menu__row select { background: var(--bg); color: var(--text); border: 1px solid var(--line); font-family: var(--mono); font-size: 12px; padding: 4px 6px; max-width: 170px; }
+@media (max-width: 720px) { header { flex-wrap: wrap; padding: 10px 14px; gap: 10px; } #nav { height: auto; } #nav button { padding: 8px 8px; } }

@@ -14,6 +14,7 @@ const chainName = () => CHAIN_NAME[D.chainId] || `chain ${D.chainId}`;
 
 // ---- icons (authored, 1.5 stroke) ----------------------------------------------------
 const ICON = {
+  gift: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M4 11h16v9H4z"/><path d="M3 7h18v4H3z"/><path d="M12 7v13"/><path d="M12 7c-1.5-3-5-3-5-1s3 1 5 1zm0 0c1.5-3 5-3 5-1s-3 1-5 1z"/></svg>`,
   passkey: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="square" aria-hidden="true"><path d="M7.5 10.5a4.5 4.5 0 0 1 9 0v1.2"/><path d="M12 10.5v4.2c0 2-1 3.6-2.6 4.8"/><path d="M9.2 10.8v3.4c0 1.4-.5 2.6-1.4 3.5"/><path d="M14.8 12.9c0 2.5-.7 4.6-2 6.3"/><path d="M4.8 9.4A7.5 7.5 0 0 1 19.4 9"/><path d="M19.5 12.4c0 1.9-.3 3.6-.9 5.2"/></svg>`,
   copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11"/><path d="M15.5 8.5v-4h-11v11h4"/></svg>`,
   check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="square" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`,
@@ -64,17 +65,7 @@ export function renderAccount() {
     $("#connectBtn").onclick = openConnect;
     return;
   }
-  if (W.kind === "mera") return renderMeraAccount(el);
-  const label = W.kind === "jaw" ? "JAW" : W.kind === "local" ? "Demo" : "Wallet";
-  el.innerHTML = html`
-    ${W.kind === "local"
-      ? `<select id="acctSel">${W.localAccounts.map((a, i) => `<option value="${i + 5}" ${a === W.address ? "selected" : ""}>Demo ${i + 1} · ${fmt.addr(a)}</option>`).join("")}</select>`
-      : `<span class="pill mono">${label} · ${fmt.addr(W.address)}</span>`}
-    ${D.chainId !== 143 ? `<button id="faucetBtn" class="sm">Test funds</button>` : ""}
-    <button id="discBtn" class="sm ghost">Disconnect</button>`;
-  if ($("#acctSel")) $("#acctSel").onchange = async (e) => { await connectLocal(Number(e.target.value)); await refresh(); };
-  if ($("#faucetBtn")) $("#faucetBtn").onclick = faucet;
-  $("#discBtn").onclick = async () => { await disconnect(); await refresh(); };
+  return renderAccountMenu(el); // one account button + menu for every wallet kind
 }
 
 // One set of document listeners closes the account menu on outside click or Escape.
@@ -88,21 +79,25 @@ const closeMenu = () => {
 document.addEventListener("click", closeMenu);
 document.addEventListener("keydown", (e) => e.key === "Escape" && closeMenu());
 
-function renderMeraAccount(el) {
+const KIND_LABEL = { mera: "Passkey", injected: "Wallet", local: "Demo", jaw: "JAW" };
+const KIND_TITLE = { mera: "Passkey account", injected: "Browser wallet", local: "Demo account", jaw: "JAW passkey account" };
+
+function renderAccountMenu(el) {
+  const mera = W.kind === "mera";
   const sym = nativeSymbol();
   el.innerHTML = html`
-    ${needsGas() ? `<button class="gas-chip" id="gasBtn" aria-haspopup="true">${ICON.alert}<span>Needs ${sym} for gas</span></button>` : ""}
+    ${mera && needsGas() ? `<button class="gas-chip" id="gasBtn" aria-haspopup="true">${ICON.alert}<span>Needs ${sym} for gas</span></button>` : ""}
     <div class="acct">
       <button class="acct-pill" id="acctBtn" aria-haspopup="true" aria-expanded="${menuOpen}" title="${W.address}">
         ${identicon(W.address)}
         <span class="acct-pill__addr mono" id="acctAddr">${fmt.addr(W.address)}</span>
-        <span class="badge-passkey">${ICON.passkey}Passkey</span>
+        <span class="badge-passkey ${mera ? "" : "badge-passkey--wallet"}">${mera ? ICON.passkey : ""}${KIND_LABEL[W.kind] || "Wallet"}</span>
         <span class="acct-pill__bal mono" id="acctBal">${balText()}</span>
       </button>
       <div class="acct-menu" id="acctMenu" role="menu" ${menuOpen ? "" : "hidden"}>
         <div class="acct-menu__id">
           ${identicon(W.address, 36)}
-          <div class="acct-menu__who"><b>Passkey account</b><span class="mono">${fmt.addr(W.address)}</span></div>
+          <div class="acct-menu__who"><b>${KIND_TITLE[W.kind] || "Account"}</b><span class="mono">${fmt.addr(W.address)}</span></div>
         </div>
         <button class="acct-menu__addr mono" id="copyAddr" title="Copy address">${W.address}<span class="acct-menu__copy">${ICON.copy}<em>Copy</em></span></button>
         <div class="acct-menu__row"><span>Gas balance</span><span class="mono" id="menuBal">${balText()}</span></div>
@@ -110,12 +105,12 @@ function renderMeraAccount(el) {
             <p><b>Needs ${sym} for gas.</b> A new passkey account starts empty. Send a little ${sym} to the address above${hasFaucet() ? ", or get some from the faucet" : ""}.</p>
             ${hasFaucet() ? `<a class="acct-menu__link" href="${FAUCET_URL}" target="_blank" rel="noopener">Open Monad faucet ${ICON.out}</a>` : ""}
           </div>` : ""}
-        <button class="acct-menu__item" id="exportBtn" role="menuitem">${ICON.key}<span>Export recovery phrase</span></button>
-        <button class="acct-menu__item acct-menu__item--out" id="menuDisc" role="menuitem">${ICON.back}<span>Sign out</span></button>
+        ${W.kind === "local" ? `<label class="acct-menu__row"><span>Demo account</span><select id="acctSel">${W.localAccounts.map((a, i) => `<option value="${i + 5}" ${a === W.address ? "selected" : ""}>Demo ${i + 1} · ${fmt.addr(a)}</option>`).join("")}</select></label>` : ""}
+        ${D.chainId !== 143 ? `<button class="acct-menu__item" id="faucetBtn" role="menuitem">${ICON.gift || ICON.key}<span>Test funds</span></button>` : ""}
+        ${mera ? `<button class="acct-menu__item" id="exportBtn" role="menuitem">${ICON.key}<span>Export recovery phrase</span></button>` : ""}
+        <button class="acct-menu__item acct-menu__item--out" id="menuDisc" role="menuitem">${ICON.back}<span>Disconnect</span></button>
       </div>
-    </div>
-    ${D.chainId !== 143 ? `<button id="faucetBtn" class="sm">Test funds</button>` : ""}
-    <button id="discBtn" class="sm ghost">Disconnect</button>`;
+    </div>`;
 
   // Open toward whichever side has room: the header wraps the account to the left on narrow screens.
   const place = () => $("#acctMenu").classList.toggle("acct-menu--left", $("#acctBtn").getBoundingClientRect().left + 320 < innerWidth);
@@ -139,11 +134,11 @@ function renderMeraAccount(el) {
       toast("Copy failed. Select the address and copy it by hand.");
     }
   };
-  $("#exportBtn").onclick = () => { toggle(false); openExport(); };
+  if ($("#exportBtn")) $("#exportBtn").onclick = () => { toggle(false); openExport(); };
   const out = async () => { menuOpen = false; await disconnect(); await refresh(); };
   $("#menuDisc").onclick = out;
-  $("#discBtn").onclick = out;
-  if ($("#faucetBtn")) $("#faucetBtn").onclick = faucet;
+  if ($("#faucetBtn")) $("#faucetBtn").onclick = () => { toggle(false); faucet(); };
+  if ($("#acctSel")) $("#acctSel").onchange = async (e) => { await connectLocal(Number(e.target.value)); await refresh(); };
 
   const addr = W.address;
   nativeBalance(addr).then((wei) => {

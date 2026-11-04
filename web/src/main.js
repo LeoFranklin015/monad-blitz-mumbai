@@ -28,6 +28,7 @@ let currentName = null;
 let demoPanel = null;
 
 function header() {
+  if (!$("#mkt") || !$("#qps")) return; // the header bar no longer shows market / quote pills
   const exp = S.series.length && S.series.every((s) => s.expiry <= S.now);
   const m = $("#mkt");
   m.textContent = exp ? "Expired · settling" : S.closed ? "Stocks closed · options open" : "Stocks open";
