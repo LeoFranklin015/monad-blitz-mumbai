@@ -9,6 +9,7 @@
     "reporter": "node src/index.js reporter"
   },
   "dependencies": {
-    "ethers": "^6.13.0"
+    "ethers": "^6.13.0",
+    "ws": "^8.21.0"
   }
 }

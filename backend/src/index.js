@@ -6,6 +6,7 @@
 import { D, NETWORK, config } from "./config.js";
 import { log } from "./lib/chain.js";
 import { refreshMarket } from "./lib/market.js";
+import { startKuruPrices } from "./lib/kuru.js";
 import { index, sync } from "./lib/indexer.js";
 import { startMakers } from "./services/makers.js";
 import { startHedger } from "./services/hedger.js";
@@ -44,9 +45,8 @@ function loop(name, ms, fn) {
   );
 }
 
-index.load();
-await sync();
-await refreshMarket();
+startKuruPrices();
+try { await refreshMarket(); } catch (e) { log(`! initial refresh: ${e.shortMessage || e.message}`); }
 
 const reporter = on("reporter") ? await startReporter() : null;
 const makers = on("makers") ? await startMakers() : null;
@@ -55,7 +55,6 @@ const server = on("api") ? startApi() : null;
 const keeper = on("keeper") ? await startKeeper() : null;
 
 loop("market", Math.max(500, config.tickMs / 2), refreshMarket);
-loop("indexer", Math.max(2000, config.tickMs * 2), sync);
 if (reporter) loop("reporter", config.tickMs, reporter.tick);
 if (makers) loop("makers", config.tickMs, makers.tick);
 if (hedger) loop("hedger", config.hedgerMs, hedger.tick);

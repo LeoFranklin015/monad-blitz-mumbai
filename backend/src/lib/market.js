@@ -1,7 +1,8 @@
 import { D, config } from "../config.js";
-import { contracts, chainNow, loadSeries, spots, usdFrom, log } from "./chain.js";
+import { contracts, usdFrom, log } from "./chain.js";
 import { priceSeries, marketClosed, YEAR } from "./pricing.js";
 import { metrics } from "./obs.js";
+import { kuruSpot } from "./kuru.js";
 
 /// Shared market snapshot, refreshed by the market loop and read by every service.
 export const state = {
@@ -17,13 +18,18 @@ export const state = {
   halt: {},
 };
 
-let lastSeriesLoad = 0;
 const jumpUntil = {};
 
-export async function refreshSeries(force = false) {
-  if (!force && Date.now() - lastSeriesLoad < 15_000 && state.series.length) return;
-  state.series = await loadSeries();
-  lastSeriesLoad = Date.now();
+// Load series from the deployment JSON — no chain calls needed since deploy script embeds them.
+export function refreshSeries() {
+  if (state.series.length) return;
+  const out = [];
+  for (const stock of D.stocks) {
+    for (const s of (stock.series || [])) {
+      out.push({ id: s.id, stock, expiry: s.expiry, kind: s.kind, strike: s.strike, strike2: s.strike2, token: s.token, settled: false });
+    }
+  }
+  state.series = out;
 }
 
 const rounds = [];
@@ -65,29 +71,25 @@ function assessRisk() {
 }
 
 export async function refreshMarket() {
-  await refreshSeries();
-  state.now = await chainNow();
+  refreshSeries();
+  state.now = Math.floor(Date.now() / 1000);
   state.closed = marketClosed(state.now);
-  const { px, at } = await spots();
+  // Prices come from Kuru WS — no chain calls.
   for (const s of D.stocks) {
-    const a = s.address;
-    const old = state.spots[a];
-    if (old && px[a] && Math.abs(px[a] / old - 1) > config.jumpPct) {
-      jumpUntil[a] = state.now + config.jumpCooldownSec;
-      log(`! risk: ${s.symbol} moved ${((px[a] / old - 1) * 100).toFixed(1)}% in one tick`);
+    const px = kuruSpot(s.address);
+    if (!px) continue;
+    const old = state.spots[s.address];
+    if (old && Math.abs(px / old - 1) > config.jumpPct) {
+      jumpUntil[s.address] = state.now + config.jumpCooldownSec;
+      log(`! risk: ${s.symbol} moved ${((px / old - 1) * 100).toFixed(1)}% in one tick`);
     }
-    state.spots[a] = px[a];
-    state.spotAt[a] = at[a];
-    metrics.set("spot", { stock: s.symbol }, px[a]);
+    state.spots[s.address] = px;
+    state.spotAt[s.address] = state.now;
+    metrics.set("spot", { stock: s.symbol }, px);
   }
   assessRisk();
-
-  const { gap } = contracts();
-  const latest = await latestGapRounds();
-  for (const s of D.stocks) {
-    const r = latest[s.address.toLowerCase()];
-    state.gapUpBps[s.address] = r && state.now < r.lockTime ? Number(await gap.impliedUpBps(r.id)) : 5000;
-  }
+  // Gap market bps — default neutral until we add a Kuru-based feed.
+  for (const s of D.stocks) state.gapUpBps[s.address] = 5000;
 
   state.fair.clear();
   for (const s of state.series) {
