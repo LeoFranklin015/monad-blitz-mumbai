@@ -62,6 +62,16 @@
     .pillar { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 150px; }
     .pillar .cap { font-family: var(--mono); font-size: clamp(11px, 1.3vw, 14px); letter-spacing: .04em; color: var(--text); text-align: center; }
 
+    /* ---- Slide 2 real chart ---- */
+    .chart { position: relative; width: min(1000px, 86vw); margin-top: clamp(22px, 4vh, 44px); }
+    .chart img { width: 100%; height: auto; display: block; border: 1px solid var(--line); }
+    .chart .tag2 { position: absolute; font-family: var(--mono); font-size: clamp(10px, 1.1vw, 13px); font-weight: 600; letter-spacing: .08em; padding: 4px 9px; white-space: nowrap; background: rgba(11,13,16,.82); backdrop-filter: blur(2px); }
+    .chart .tag2.reopen { color: #c9b0ff; border: 1px solid rgba(140,82,255,.6); top: 8%; left: 44%; }
+    .chart .tag2.wiped { color: var(--down); border: 1px solid rgba(242,85,90,.6); top: 60%; left: 50%; }
+    .chart .liqline { position: absolute; left: 0; right: 0; top: 52%; border-top: 2px dashed rgba(242,85,90,.7); }
+    .chart .liqlabel { position: absolute; top: calc(52% - 24px); right: 10px; font-family: var(--mono); font-size: clamp(10px, 1.1vw, 13px); letter-spacing: .1em; color: var(--down); background: rgba(11,13,16,.82); padding: 2px 8px; }
+    .chart .reopenline { position: absolute; top: 0; bottom: 0; left: 44%; border-left: 2px dashed rgba(140,82,255,.55); }
+
     /* ---- Slide 3 payoff panels ---- */
     .payoffs { display: flex; gap: clamp(32px, 6vw, 96px); margin-top: clamp(28px, 5vh, 52px); flex-wrap: wrap; justify-content: center; align-items: flex-start; }
     .payoff { width: min(460px, 44vw); display: flex; flex-direction: column; gap: 14px; }
@@ -102,73 +112,14 @@
       <section class="slide" id="s2">
         <div class="kicker">The problem</div>
         <h2 class="head">Stale price. <span class="dn">Sudden gap.</span> Everyone liquidated.</h2>
-        <svg class="art" viewBox="0 0 1080 460" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Price trades normally, market closes and the price freezes flat, then reopens with a huge gap down that crosses the liquidation line">
-          <defs>
-            <linearGradient id="fadeDown" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#f2555a" stop-opacity=".22"/>
-              <stop offset="1" stop-color="#f2555a" stop-opacity="0"/>
-            </linearGradient>
-          </defs>
-          <!-- baseline grid -->
-          <g stroke="#232831" stroke-width="1">
-            <line x1="40" y1="70" x2="1040" y2="70"/>
-            <line x1="40" y1="180" x2="1040" y2="180"/>
-            <line x1="40" y1="290" x2="1040" y2="290"/>
-            <line x1="40" y1="400" x2="1040" y2="400"/>
-          </g>
-
-          <!-- 1. normal trading: small green/neutral candles near the top -->
-          <g stroke-width="2">
-            <line x1="90"  y1="96"  x2="90"  y2="140" stroke="#3ecf8e"/><rect x="81"  y="106" width="18" height="26" fill="#3ecf8e"/>
-            <line x1="140" y1="88"  x2="140" y2="132" stroke="#3ecf8e"/><rect x="131" y="98"  width="18" height="24" fill="#3ecf8e"/>
-            <line x1="190" y1="94"  x2="190" y2="138" stroke="#f2555a"/><rect x="181" y="104" width="18" height="22" fill="#f2555a"/>
-            <line x1="240" y1="86"  x2="240" y2="130" stroke="#3ecf8e"/><rect x="231" y="96"  width="18" height="24" fill="#3ecf8e"/>
-          </g>
-
-          <!-- 2. market closes: price frozen flat (dashed) holding the last level -->
-          <line x1="290" y1="108" x2="470" y2="108" stroke="#8a93a3" stroke-width="3" stroke-dasharray="2 11" stroke-linecap="round"/>
-          <line x1="290" y1="40" x2="290" y2="430" stroke="#5d6575" stroke-width="1.5" stroke-dasharray="4 6"/>
-          <text x="118" y="196" font-family="Geist Mono, monospace" font-size="15" letter-spacing="1.5" fill="#8a93a3">MARKET CLOSED · FROZEN</text>
-
-          <!-- 3. reopen: huge gap, price starts VERY low, far below the frozen line -->
-          <line x1="470" y1="40" x2="470" y2="430" stroke="#8c52ff" stroke-width="1.5" stroke-dasharray="4 6"/>
-          <text x="482" y="58" font-family="Geist Mono, monospace" font-size="15" letter-spacing="1" fill="#c9b0ff">REOPEN</text>
-
-          <!-- the gap drop: connector from frozen level straight down to the low open -->
-          <path d="M470 108 L470 370" stroke="#f2555a" stroke-width="2" stroke-dasharray="3 5" opacity=".8"/>
-          <path d="M470 108 L500 370" stroke="#f2555a" stroke-width="0"/>
-
-          <!-- fill under the low reopen candles -->
-          <path d="M470 370 L540 372 L620 388 L700 398 L780 408 L860 410 L940 412 L940 430 L470 430 Z" fill="url(#fadeDown)"/>
-
-          <!-- 4. reopen candles: open deep and keep bleeding, all below the liquidation line -->
-          <g stroke-width="2">
-            <line x1="500" y1="356" x2="500" y2="392" stroke="#f2555a"/><rect x="491" y="362" width="18" height="24" fill="#f2555a"/>
-            <line x1="560" y1="366" x2="560" y2="402" stroke="#f2555a"/><rect x="551" y="374" width="18" height="22" fill="#f2555a"/>
-            <line x1="620" y1="378" x2="620" y2="412" stroke="#f2555a"/><rect x="611" y="386" width="18" height="22" fill="#f2555a"/>
-            <line x1="680" y1="388" x2="680" y2="420" stroke="#f2555a"/><rect x="671" y="394" width="18" height="22" fill="#f2555a"/>
-            <line x1="740" y1="394" x2="740" y2="424" stroke="#f2555a"/><rect x="731" y="400" width="18" height="20" fill="#f2555a"/>
-            <line x1="820" y1="398" x2="820" y2="426" stroke="#f2555a"/><rect x="811" y="404" width="18" height="18" fill="#f2555a"/>
-          </g>
-
-          <!-- liquidation line: sits between the frozen level and the low reopen -->
-          <line x1="40" y1="300" x2="1040" y2="300" stroke="#f2555a" stroke-width="2" stroke-dasharray="6 6"/>
-          <text x="820" y="290" font-family="Geist Mono, monospace" font-size="15" letter-spacing="1.5" fill="#f2555a">LIQUIDATION</text>
-
-          <!-- blow-up burst where the gap punches through the line -->
-          <g transform="translate(470 300)" stroke="#f5b84a" stroke-width="2.5" stroke-linecap="round">
-            <circle r="8" fill="#f5b84a" stroke="none"/>
-            <line x1="0" y1="-15" x2="0" y2="-28"/>
-            <line x1="0" y1="15" x2="0" y2="28"/>
-            <line x1="-15" y1="0" x2="-28" y2="0"/>
-            <line x1="15" y1="0" x2="28" y2="0"/>
-            <line x1="-11" y1="-11" x2="-20" y2="-20"/>
-            <line x1="11" y1="11" x2="20" y2="20"/>
-            <line x1="11" y1="-11" x2="20" y2="-20"/>
-            <line x1="-11" y1="11" x2="-20" y2="20"/>
-          </g>
-          <text x="330" y="348" font-family="Geist Mono, monospace" font-size="15" letter-spacing="1" fill="#f5b84a">PERPS WIPED</text>
-        </svg>
+        <div class="chart">
+          <img src="/gap-chart.png" alt="QQQx hourly chart on kuru.io: price holds near 724, then gaps and cascades down through 716, 704 and into the 690s" />
+          <div class="reopenline"></div>
+          <div class="liqline"></div>
+          <div class="liqlabel">LIQUIDATION</div>
+          <div class="tag2 reopen">MARKET REOPENS</div>
+          <div class="tag2 wiped">PERPS WIPED</div>
+        </div>
       </section>
 
       <!-- Slide 3 : Products — Upside and Floor -->
