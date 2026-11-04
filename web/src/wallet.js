@@ -63,22 +63,87 @@ export async function connectJaw() {
   emit();
 }
 
-export async function connectInjected() {
-  if (!window.ethereum) throw new Error("No browser wallet found");
-  const bp = new ethers.BrowserProvider(window.ethereum);
-  await bp.send("eth_requestAccounts", []);
-  const net = await bp.getNetwork();
-  if (Number(net.chainId) !== D.chainId) {
-    await bp.send("wallet_switchEthereumChain", [{ chainId: hex(D.chainId) }]);
+// Chains a browser wallet may not know yet, so Connect can add them instead of failing with error 4902.
+function chainParams() {
+  if (D.chainId === 10143) return { chainId: hex(10143), chainName: "Monad Testnet", nativeCurrency: { name: "Monad", symbol: "MON", decimals: 18 }, rpcUrls: ["https://testnet-rpc.monad.xyz"], blockExplorerUrls: ["https://testnet.monadvision.com"] };
+  if (D.chainId === 143) return { chainId: hex(143), chainName: "Monad", nativeCurrency: { name: "Monad", symbol: "MON", decimals: 18 }, rpcUrls: ["https://rpc.monad.xyz"], blockExplorerUrls: ["https://monadvision.com"] };
+  if (D.chainId === 31337) return { chainId: hex(31337), chainName: "Weekend Options local", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: [localRpc()] };
+  return { chainId: hex(D.chainId), chainName: `Chain ${D.chainId}`, nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: [D.rpc] };
+}
+
+const wantsUnknownChain = (e) => e?.code === 4902 || e?.data?.originalError?.code === 4902 || /unrecognized chain|wallet_addEthereumChain/i.test(e?.message || "");
+
+/// Put the browser wallet on the deployment's chain, adding the chain first if the wallet doesn't know it.
+async function ensureChain(eth) {
+  if (Number(await eth.request({ method: "eth_chainId" })) === D.chainId) return;
+  try {
+    await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex(D.chainId) }] });
+  } catch (e) {
+    if (!wantsUnknownChain(e)) throw e;
+    await eth.request({ method: "wallet_addEthereumChain", params: [chainParams()] });
+    if (Number(await eth.request({ method: "eth_chainId" })) !== D.chainId) {
+      await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hex(D.chainId) }] });
+    }
   }
+}
+
+const REMEMBER = "wkend.wallet"; // "injected" while a browser wallet is connected, so a reload doesn't ask again
+let watching = false;
+
+async function attachInjected(address) {
   W.kind = "injected";
-  W.signer = await new ethers.BrowserProvider(window.ethereum).getSigner();
-  W.address = await W.signer.getAddress();
+  W.signer = await new ethers.BrowserProvider(window.ethereum).getSigner(address);
+  W.address = ethers.getAddress(address);
+  try { localStorage.setItem(REMEMBER, "injected"); } catch {}
+  if (!watching && window.ethereum.on) {
+    watching = true;
+    // Follow the wallet: a switched account becomes the app's account, a disconnect signs the app out.
+    window.ethereum.on("accountsChanged", async (accts) => {
+      if (W.kind !== "injected") return;
+      if (accts?.length) await attachInjected(accts[0]).catch(() => {});
+      else { Object.assign(W, { kind: null, address: null, signer: null }); try { localStorage.removeItem(REMEMBER); } catch {} }
+      emit();
+    });
+  }
   emit();
+}
+
+/// Connect MetaMask/Rabby. Talks to the wallet directly (ethers turns wallet errors into "could not coalesce error").
+export async function connectInjected() {
+  const eth = window.ethereum;
+  if (!eth) throw new Error("No browser wallet found. Install MetaMask or Rabby, then reload.");
+  let accts;
+  try {
+    accts = await eth.request({ method: "eth_requestAccounts" });
+    await ensureChain(eth);
+  } catch (e) {
+    if (e?.code === 4001) throw new Error("You declined the request in your wallet.");
+    if (e?.code === -32002) throw new Error("Your wallet already has a request open. Open MetaMask to finish it.");
+    throw new Error(e?.message || "Your wallet refused to connect");
+  }
+  if (!accts?.length) throw new Error("Your wallet didn't share an account");
+  await attachInjected(accts[0]);
+}
+
+/// On page load: if a browser wallet was connected before and still shares an account, reconnect without a prompt.
+export async function restoreSession() {
+  let last = null;
+  try { last = localStorage.getItem(REMEMBER); } catch {}
+  if (last !== "injected" || !window.ethereum || W.address) return false;
+  try {
+    const accts = await window.ethereum.request({ method: "eth_accounts" }); // never prompts
+    if (!accts?.length) return false;
+    if (Number(await window.ethereum.request({ method: "eth_chainId" })) !== D.chainId) return false; // wrong chain: let Connect fix it
+    await attachInjected(accts[0]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function disconnect() {
   if (W.jaw) await W.jaw.disconnect().catch(() => {});
+  try { localStorage.removeItem(REMEMBER); } catch {}
   Object.assign(W, { kind: null, address: null, signer: null, jaw: null });
   emit();
 }

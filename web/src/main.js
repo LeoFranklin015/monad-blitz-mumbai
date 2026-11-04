@@ -1,6 +1,6 @@
 import "./style.css";
 import { load, loadSeries, refreshMarket, S, D } from "./chain.js";
-import { W, onChange, initJaw } from "./wallet.js";
+import { W, onChange, initJaw, restoreSession } from "./wallet.js";
 import { renderAccount, setRefresh } from "./account.js";
 import { $, $$, toast, setErrorAbis } from "./ui.js";
 import { ethers } from "ethers";
@@ -97,6 +97,7 @@ async function boot() {
   }
   setErrorAbis(Object.values(ABI).map((a) => new ethers.Interface(a)));
   await initJaw();
+  await restoreSession(); // a browser wallet connected before reconnects without asking again
   try {
     await Promise.all([refreshMarket(), refreshStatus()]);
     await loadSeries();
