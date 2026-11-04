@@ -69,7 +69,7 @@ async function boot() {
     await loadSeries();
   } catch (e) {
     console.error(e);
-    $("#view").innerHTML = `<div class="card"><h2>Can't reach the chain</h2><p class="muted">No response from ${D.chainId === 31337 ? "the local chain at :8545. Start it with <span class='mono'>npm run chain</span> and deploy." : `chain ${D.chainId}.`}</p></div>`;
+    $("#view").innerHTML = `<div class="card"><h2>Can't reach the chain</h2><p class="muted">No response from ${D.chainId === 31337 ? `the local chain at ${D.rpc}. Start it with <span class='mono'>npm run chain</span> and deploy.` : `chain ${D.chainId}.`}</p></div>`;
     $("#mkt").textContent = "offline";
     setTimeout(() => location.reload(), 5000);
     return;

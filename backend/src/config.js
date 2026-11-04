@@ -54,9 +54,10 @@ export const config = {
   tickMs: num("TICK_MS", LOCAL ? 2000 : 1000),
   keeperMs: num("KEEPER_MS", 5000),
   hedgerMs: num("HEDGER_MS", 5000),
-  // reporter spot source: "kuru" pushes each stock's Kuru mid price (the book HedgedMaker hedges on),
+  // reporter spot source: "kuru" pushes each stock's Kuru mid price (default whenever the deployment records Kuru
+  // markets, with or without hedging on Kuru),
   // "sim" a random walk (local demo), "none" leaves spot alone (Pyth deployments)
-  priceSource: env.PRICE_SOURCE || (D.kuruAdapter ? "kuru" : simulateDefault ? "sim" : "none"),
+  priceSource: env.PRICE_SOURCE || (D.stocks.some((s) => s.kuruMarket) ? "kuru" : simulateDefault ? "sim" : "none"),
   kuruPushBps: num("KURU_PUSH_BPS", 5), // push when the mid moves this much, or every KURU_PUSH_MAX_SEC
   kuruPushMaxSec: num("KURU_PUSH_MAX_SEC", 60),
 

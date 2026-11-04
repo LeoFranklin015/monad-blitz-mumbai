@@ -1,5 +1,5 @@
 import { D, config } from "../config.js";
-import { contracts, usdFrom, log } from "./chain.js";
+import { contracts, usdFrom, log, provider } from "./chain.js";
 import { priceSeries, marketClosed, YEAR } from "./pricing.js";
 import { metrics } from "./obs.js";
 import { kuruSpot } from "./kuru.js";
@@ -79,7 +79,9 @@ async function oracleSpots() {
 
 export async function refreshMarket() {
   refreshSeries();
-  state.now = Math.floor(Date.now() / 1000);
+  // Chain time, not wall time: expiries, settlement windows and the keeper all follow block.timestamp, and a
+  // local chain can be moved forward (the app's "Jump to expiry" demo control).
+  state.now = Number((await provider.getBlock("latest")).timestamp);
   state.closed = marketClosed(state.now);
   // Prices come from the Kuru WS feed when the deployment has one (no chain calls). Otherwise read our own
   // oracle's spot, which the reporter keeps on Kuru's mid (PRICE_SOURCE=kuru) and the protocol settles against.

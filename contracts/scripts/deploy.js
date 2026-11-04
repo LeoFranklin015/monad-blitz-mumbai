@@ -191,7 +191,7 @@ async function main() {
   const out = {
     network: network.name,
     chainId: Number((await ethers.provider.getNetwork()).chainId),
-    rpc: local ? "http://127.0.0.1:8545" : network.config.url,
+    rpc: local ? process.env.LOCAL_RPC || "http://127.0.0.1:8545" : network.config.url,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
     deployBlock,
