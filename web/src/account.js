@@ -1,6 +1,6 @@
 import { D, isLocal, call, usd, sh } from "./chain.js";
 import { W, connectLocal, connectJaw, connectInjected, disconnect, jawAvailable, jawChainSupported, sendCalls } from "./wallet.js";
-import { JAW_API_KEY } from "./config.js";
+import { JAW_API_KEY, API_URL } from "./config.js";
 import { $, html, fmt, act, toast, errMsg } from "./ui.js";
 
 let refresh = async () => {};
@@ -18,7 +18,7 @@ export function renderAccount() {
     ${W.kind === "local"
       ? `<select id="acctSel">${W.localAccounts.map((a, i) => `<option value="${i + 5}" ${a === W.address ? "selected" : ""}>Demo ${i + 1} · ${fmt.addr(a)}</option>`).join("")}</select>`
       : `<span class="pill mono">${label} · ${fmt.addr(W.address)}</span>`}
-    ${D.mocks ? `<button id="faucetBtn" class="sm">Test funds</button>` : ""}
+    ${D.chainId !== 143 ? `<button id="faucetBtn" class="sm">Test funds</button>` : ""}
     <button id="discBtn" class="sm ghost">Disconnect</button>`;
   if ($("#acctSel")) $("#acctSel").onchange = async (e) => { await connectLocal(Number(e.target.value)); await refresh(); };
   if ($("#faucetBtn")) $("#faucetBtn").onclick = faucet;
@@ -67,7 +67,18 @@ export function openConnect() {
   $("#cInj").onclick = go(connectInjected);
 }
 
+/// Real-token deployment (Kuru's tokens): ask the backend faucet to send a little of each token plus gas money.
+export async function claimFaucet(after) {
+  await act("Sending test funds", async () => {
+    const r = await fetch(`${API_URL}/faucet`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ address: W.address }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `faucet ${r.status}`);
+    toast(`Sent: ${j.sent.map((x) => x.label).join(", ")}`, 6000);
+  }, after);
+}
+
 async function faucet() {
+  if (!D.mocks) return claimFaucet(refresh);
   await act("Minting test funds", async () => {
     const calls = [call(D.usdc, "MockERC20", "mint", [W.address, usd(100_000)])];
     for (const s of D.stocks) calls.push(call(s.address, "MockXStock", "mint", [W.address, sh(100)]));

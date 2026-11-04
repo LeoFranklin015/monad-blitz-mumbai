@@ -68,6 +68,11 @@ export const config = {
   hedgerKey: env.HEDGER_KEY || dev(11),
   makerKeys: env.MAKER_KEYS ? list(env.MAKER_KEYS) : LOCAL ? [dev(1), dev(2), dev(3)] : [],
   operatorKey: env.OPERATOR_KEY || dev(4),
+  // Test funds on a real-token deployment: a funded faucet key sends a little of each token plus gas money.
+  faucetKey: env.FAUCET_KEY || null,
+  faucetUsdc: num("FAUCET_USDC", 100),
+  faucetStock: num("FAUCET_STOCK", 0.5),
+  faucetNative: num("FAUCET_MON", 0.05),
 
   // loops
   tickMs: num("TICK_MS", LOCAL ? 2000 : 1000),

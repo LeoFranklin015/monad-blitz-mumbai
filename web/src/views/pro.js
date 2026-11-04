@@ -5,7 +5,7 @@ import { D, S, C, call, usd, sh, fromUsd, fromSh, liveSeries, expiriesOf, series
 import { W, sendCalls, approvals, onChange as onWalletChange } from "../wallet.js";
 import { API_URL, PRODUCTS, SLIPPAGE_BPS } from "../config.js";
 import { $$, html, fmt, act, on, toast, errMsg } from "../ui.js";
-import { openConnect } from "../account.js";
+import { openConnect, claimFaucet } from "../account.js";
 import { simulate, positionsAt } from "../sim.js";
 
 // ─── Module-level state ──────────────────────────────────────────────────────
@@ -177,7 +177,7 @@ export function pro(root, refreshAll) {
     </div>
     <div class="pro-tabs__content">
       <div class="pro-tabs__panel on" id="pro-tab-balances">
-        ${D.mocks ? `<div class="pro-balances-toolbar"><button id="pro-faucet-btn" class="sm">🪙 Get test funds</button></div>` : ""}
+        ${D.chainId !== 143 ? `<div class="pro-balances-toolbar"><button id="pro-faucet-btn" class="sm">Get test funds</button></div>` : ""}
         <table>
           <thead><tr><th>Token</th><th class="r">Wallet</th><th class="r">Deposited</th><th class="r">Value (USDC)</th><th></th></tr></thead>
           <tbody id="pro-balances-body"><tr><td colspan="5" class="empty">Connect wallet</td></tr></tbody>
@@ -1157,6 +1157,7 @@ export function pro(root, refreshAll) {
 
   async function execFaucet() {
     if (!W.address) return openConnect();
+    if (!D.mocks) return claimFaucet(refreshAll); // real Kuru tokens can't be minted: the backend faucet sends some
     const MINT_USDC = usd(10_000);
     await act("Minting test funds", async () => {
       const mintCalls = [call(D.usdc, "MockERC20", "mint", [W.address, MINT_USDC])];

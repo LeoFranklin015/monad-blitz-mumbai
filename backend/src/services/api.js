@@ -10,7 +10,7 @@
 import http from "node:http";
 import { ethers } from "ethers";
 import { D, config, KIND, NETWORK } from "../config.js";
-import { contracts, usdTo, shTo, usdFrom, shFrom, log } from "../lib/chain.js";
+import { contracts, usdTo, shTo, usdFrom, shFrom, log, signer, send } from "../lib/chain.js";
 import { state } from "../lib/market.js";
 import { metrics } from "../lib/obs.js";
 import { index } from "../lib/indexer.js";
@@ -29,6 +29,8 @@ const types = {
 
 const hits = new Map(); // ip -> [timestamps]
 const ohlcCache = new Map(); // "SYMBOL:range:interval" -> { data, expiresAt }
+const faucetClaims = new Map(); // lowercase address -> last claim time (ms)
+const faucet = config.faucetKey ? signer(config.faucetKey) : null;
 const rpcCache = new Map(); // normalized-request-key -> { body, expiresAt }
 
 // Read-only JSON-RPC methods whose result is stable enough to cache for a few seconds.
@@ -127,6 +129,31 @@ export function startApi() {
         res.setHeader("Content-Type", "application/json");
         return res.end(text);
       }
+      // Test funds on a real-token deployment (Kuru's tokens can't be minted): the faucet key sends a little of each
+      // token and some gas money. One claim per address per day, plus the per-IP limit.
+      if (url.pathname === "/faucet" && req.method === "POST") {
+        if (D.mocks) return reply(400, { error: "mock deployment: mint test funds from the app" });
+        if (!faucet) return reply(503, { error: "faucet not configured" });
+        if (limited(ip)) return reply(429, { error: "too many requests" });
+        let body = "";
+        for await (const chunk of req) { body += chunk; if (body.length > 2000) return reply(413, { error: "too large" }); }
+        let to;
+        try { to = ethers.getAddress(JSON.parse(body).address); } catch { return reply(400, { error: "send { address }" }); }
+        const last = faucetClaims.get(to.toLowerCase()) || 0;
+        if (Date.now() - last < 24 * 3600 * 1000) return reply(429, { error: "this wallet already got test funds today" });
+        faucetClaims.set(to.toLowerCase(), Date.now());
+        const c = contracts(faucet);
+        const sent = [];
+        const pay = async (label, fn) => { const r = await send(faucet, label, fn); if (r) sent.push({ label, tx: r.hash }); return r; };
+        await pay(`${config.faucetUsdc} USDC`, () => c.usdc.transfer(to, usdTo(config.faucetUsdc), { gasLimit: 90_000 }));
+        for (const st of D.stocks) await pay(`${config.faucetStock} ${st.symbol}`, () => c.stock(st.address).transfer(to, shTo(config.faucetStock), { gasLimit: 90_000 }));
+        const bal = await faucet.provider.getBalance(to);
+        if (bal < ethers.parseEther(String(config.faucetNative))) await pay(`${config.faucetNative} MON`, () => faucet.sendTransaction({ to, value: ethers.parseEther(String(config.faucetNative)), gasLimit: 21_000 }));
+        if (!sent.length) { faucetClaims.delete(to.toLowerCase()); return reply(502, { error: "faucet is empty or the chain refused, try again later" }); }
+        log(`faucet: ${to} ${sent.map((x) => x.label).join(", ")}`);
+        return reply(200, { to, sent });
+      }
+
       if (url.pathname === "/health") {
         const age = (Date.now() - state.updatedAt) / 1000;
         return reply(age < 30 ? 200 : 503, { ok: age < 30, network: NETWORK, marketAgeSec: Math.round(age) });
