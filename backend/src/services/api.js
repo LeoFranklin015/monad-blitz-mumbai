@@ -145,8 +145,14 @@ export function startApi() {
         const c = contracts(faucet);
         const sent = [];
         const pay = async (label, fn) => { const r = await send(faucet, label, fn); if (r) sent.push({ label, tx: r.hash }); return r; };
-        await pay(`${config.faucetUsdc} USDC`, () => c.usdc.transfer(to, usdTo(config.faucetUsdc), { gasLimit: 90_000 }));
-        for (const st of D.stocks) await pay(`${config.faucetStock} ${st.symbol}`, () => c.stock(st.address).transfer(to, shTo(config.faucetStock), { gasLimit: 90_000 }));
+        // Send only what the faucet actually holds, so one empty token doesn't fail the whole claim.
+        const me = await faucet.getAddress();
+        const usdcAmt = usdTo(config.faucetUsdc);
+        if ((await c.usdc.balanceOf(me)) >= usdcAmt) await pay(`${config.faucetUsdc} USDC`, () => c.usdc.transfer(to, usdcAmt, { gasLimit: 90_000 }));
+        for (const st of D.stocks) {
+          const amt = shTo(config.faucetStock);
+          if ((await c.stock(st.address).balanceOf(me)) >= amt) await pay(`${config.faucetStock} ${st.symbol}`, () => c.stock(st.address).transfer(to, amt, { gasLimit: 90_000 }));
+        }
         const bal = await faucet.provider.getBalance(to);
         if (bal < ethers.parseEther(String(config.faucetNative))) await pay(`${config.faucetNative} MON`, () => faucet.sendTransaction({ to, value: ethers.parseEther(String(config.faucetNative)), gasLimit: 21_000 }));
         if (!sent.length) { faucetClaims.delete(to.toLowerCase()); return reply(502, { error: "faucet is empty or the chain refused, try again later" }); }
