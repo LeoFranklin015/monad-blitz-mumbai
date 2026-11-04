@@ -31,14 +31,16 @@ export async function load() {
   if (!d || !a) throw new Error(`No deployment for "${NETWORK}". Run the deploy script first.`);
   D = d;
   ABI = a;
-  const rpc = D.chainId === 31337 ? `http://${location.hostname}:8545` : RPC_URL;
-  // Monad testnet RPCs choke on large batches ("queue size exceeded"); keep batches small.
-  read = new ethers.JsonRpcProvider(rpc, D.chainId, { staticNetwork: true, batchMaxCount: 5 });
+  const rpc = D.chainId === 31337 ? localRpc() : RPC_URL;
+  // The public Monad testnet RPC rejects every JSON-RPC batch; other RPCs choke on large ones, so keep them small.
+  read = new ethers.JsonRpcProvider(rpc, D.chainId, { staticNetwork: true, batchMaxCount: D.chainId === 10143 ? 1 : 5 });
   S.stock = D.stocks[0];
   return D;
 }
 
 export const isLocal = () => D && D.chainId === 31337;
+/// The local chain on this page's host, at the port the deploy recorded (8545 unless LOCAL_RPC moved it).
+export const localRpc = () => `http://${location.hostname}:${(D && D.rpc && new URL(D.rpc).port) || 8545}`;
 
 const iface = {};
 export function I(name) {

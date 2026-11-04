@@ -5,7 +5,7 @@
 //  - Local demo accounts on the dev chain (unlocked Hardhat accounts).
 //  - Any injected wallet (MetaMask, Rabby).
 import { ethers } from "ethers";
-import { D, read, isLocal, call, LOCAL_RPC } from "./chain.js";
+import { D, read, isLocal, call, localRpc } from "./chain.js";
 import { JAW_API_KEY, PAYMASTER_URL } from "./config.js";
 
 export const W = { kind: null, address: null, signer: null, jaw: null, listeners: [] };
@@ -29,7 +29,7 @@ const emit = () => W.listeners.forEach((fn) => fn());
 const hex = (n) => "0x" + n.toString(16);
 
 export async function connectLocal(index = 5) {
-  const p = new ethers.JsonRpcProvider(`http://${location.hostname}:8545`, 31337, { staticNetwork: true });
+  const p = new ethers.JsonRpcProvider(localRpc(), 31337, { staticNetwork: true });
   const accts = await p.send("eth_accounts", []);
   W.kind = "local";
   W.address = accts[index];
@@ -120,6 +120,6 @@ export async function approvals(token, spender, amount) {
 /// Dev chain only: unlocked deployer account for the demo controls.
 export async function devSigner() {
   if (!isLocal()) throw new Error("Demo controls only run on the local chain");
-  const p = new ethers.JsonRpcProvider(LOCAL_RPC.replace("127.0.0.1", location.hostname), 31337, { staticNetwork: true });
+  const p = new ethers.JsonRpcProvider(localRpc(), 31337, { staticNetwork: true });
   return { provider: p, signer: await p.getSigner(0) };
 }
