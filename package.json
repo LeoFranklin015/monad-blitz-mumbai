@@ -20,5 +20,8 @@
     "verify": "npm run verify -w contracts --",
     "backend:check": "for f in $(find backend/src backend/scripts -name \"*.js\" -o -name \"*.mjs\"); do node --check $f || exit 1; done",
     "smoke": "bash backend/scripts/smoke.sh"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
   }
 }
