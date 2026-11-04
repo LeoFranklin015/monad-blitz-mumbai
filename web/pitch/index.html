@@ -54,12 +54,24 @@
     .head { font-weight: 700; letter-spacing: -.02em; font-size: clamp(26px, 4.4vw, 60px); line-height: 1.02; text-align: center; margin: 0; }
     .head .dn { color: var(--down); }
     .head .up { color: var(--up); }
+    .head .put-accent { color: #c9b0ff; }
     .art { width: min(1080px, 92vw); margin-top: clamp(22px, 4vh, 48px); }
 
     /* ---- Slide 3 pillars ---- */
     .pillars { display: flex; gap: clamp(20px, 5vw, 80px); margin-top: clamp(26px, 4vh, 46px); flex-wrap: wrap; justify-content: center; }
     .pillar { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 150px; }
     .pillar .cap { font-family: var(--mono); font-size: clamp(11px, 1.3vw, 14px); letter-spacing: .04em; color: var(--text); text-align: center; }
+
+    /* ---- Slide 3 payoff panels ---- */
+    .payoffs { display: flex; gap: clamp(32px, 6vw, 96px); margin-top: clamp(28px, 5vh, 52px); flex-wrap: wrap; justify-content: center; align-items: flex-start; }
+    .payoff { width: min(460px, 44vw); display: flex; flex-direction: column; gap: 14px; }
+    .payoff .pt { font-family: var(--mono); font-size: clamp(15px, 1.8vw, 20px); font-weight: 600; letter-spacing: .02em; }
+    .payoff .ps { font-family: var(--mono); font-size: clamp(11px, 1.3vw, 14px); line-height: 1.6; color: var(--muted); }
+    .payoff .rule { display: flex; gap: 10px; font-family: var(--mono); font-size: clamp(11px, 1.3vw, 14px); line-height: 1.5; }
+    .payoff .rule .arm { color: var(--dim); white-space: nowrap; }
+    .payoff .rules { display: flex; flex-direction: column; gap: 8px; margin-top: 2px; }
+    .payoff.call .pt { color: var(--up); }
+    .payoff.put .pt { color: #c9b0ff; }
 
     /* ---- nav ---- */
     .dots { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); display: flex; gap: 12px; z-index: 20; }
@@ -159,102 +171,66 @@
         </svg>
       </section>
 
-      <!-- Slide 3 : How it works -->
+      <!-- Slide 3 : Products — Upside and Floor -->
       <section class="slide" id="s3">
-        <div class="kicker">How it works</div>
-        <h2 class="head">Collateral in. <span class="up">Delta hedged on Kuru.</span></h2>
-        <svg class="art" viewBox="0 0 1120 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Writer locks collateral into the onchain Options Protocol on Monad and a buyer pays a premium for an option; every fill is delta-hedged on Kuru spot liquidity so quotes stay tight">
-          <defs>
-            <marker id="arw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0 0 L10 5 L0 10 z" fill="#5d6575"/>
-            </marker>
-            <marker id="arwg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0 0 L10 5 L0 10 z" fill="#3ecf8e"/>
-            </marker>
-            <linearGradient id="core" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#8c52ff" stop-opacity=".18"/>
-              <stop offset="1" stop-color="#8c52ff" stop-opacity=".04"/>
-            </linearGradient>
-          </defs>
+        <div class="kicker">The products</div>
+        <h2 class="head"><span class="up">Upside</span> to ride the gain. <span class="put-accent">Floor</span> to survive the gap.</h2>
+        <div class="payoffs">
 
-          <!-- WRITER node -->
-          <g>
-            <rect x="24" y="96" width="186" height="120" fill="#12151a" stroke="#232831" stroke-width="1.5"/>
-            <rect x="24" y="96" width="186" height="4" fill="#3ecf8e"/>
-            <text x="117" y="134" text-anchor="middle" font-family="Geist Mono, monospace" font-size="17" fill="#e8ebf0">WRITER</text>
-            <text x="117" y="160" text-anchor="middle" font-family="Geist Mono, monospace" font-size="13" fill="#8a93a3">locks stock / USDC</text>
-            <text x="117" y="188" text-anchor="middle" font-family="Geist Mono, monospace" font-size="13" fill="#3ecf8e">earns premium</text>
-          </g>
-
-          <!-- PROTOCOL core node, with Monad logo -->
-          <g>
-            <rect x="430" y="70" width="260" height="172" fill="url(#core)" stroke="#8c52ff" stroke-width="2"/>
-            <image href="/monad.png" x="544" y="88" width="32" height="32"/>
-            <text x="560" y="150" text-anchor="middle" font-family="Geist Mono, monospace" font-size="17" fill="#e8ebf0" letter-spacing="1">OPTIONS PROTOCOL</text>
-            <text x="560" y="176" text-anchor="middle" font-family="Geist Mono, monospace" font-size="13" fill="#c9b0ff">two-sided book · onchain</text>
-            <g transform="translate(560 198)">
-              <rect x="-72" y="0" width="144" height="32" fill="#0b0d10" stroke="#232831"/>
-              <text x="0" y="21" text-anchor="middle" font-family="Geist Mono, monospace" font-size="12" fill="#8a93a3">100% COLLATERALIZED</text>
-            </g>
-          </g>
-
-          <!-- BUYER node -->
-          <g>
-            <rect x="910" y="96" width="186" height="120" fill="#12151a" stroke="#232831" stroke-width="1.5"/>
-            <rect x="910" y="96" width="186" height="4" fill="#8c52ff"/>
-            <text x="1003" y="134" text-anchor="middle" font-family="Geist Mono, monospace" font-size="17" fill="#e8ebf0">BUYER</text>
-            <text x="1003" y="160" text-anchor="middle" font-family="Geist Mono, monospace" font-size="13" fill="#8a93a3">pays premium</text>
-            <text x="1003" y="188" text-anchor="middle" font-family="Geist Mono, monospace" font-size="13" fill="#3ecf8e">exits at strike</text>
-          </g>
-
-          <!-- KURU liquidity node (bottom) -->
-          <g>
-            <rect x="430" y="332" width="260" height="76" fill="#12151a" stroke="#3ecf8e" stroke-width="1.5"/>
-            <rect x="430" y="332" width="4" height="76" fill="#3ecf8e"/>
-            <text x="560" y="366" text-anchor="middle" font-family="Geist Mono, monospace" font-size="16" fill="#3ecf8e" letter-spacing="1">KURU</text>
-            <text x="560" y="390" text-anchor="middle" font-family="Geist Mono, monospace" font-size="12" fill="#8a93a3">onchain spot liquidity</text>
-          </g>
-
-          <!-- flows: writer <-> protocol -->
-          <line x1="210" y1="140" x2="426" y2="130" stroke="#5d6575" stroke-width="2" marker-end="url(#arw)"/>
-          <text x="318" y="120" text-anchor="middle" font-family="Geist Mono, monospace" font-size="12" fill="#3ecf8e">collateral</text>
-          <line x1="426" y1="176" x2="210" y2="186" stroke="#5d6575" stroke-width="2" marker-end="url(#arw)"/>
-          <text x="318" y="208" text-anchor="middle" font-family="Geist Mono, monospace" font-size="12" fill="#8a93a3">premium</text>
-
-          <!-- buyer <-> protocol -->
-          <line x1="910" y1="140" x2="694" y2="130" stroke="#5d6575" stroke-width="2" marker-end="url(#arw)"/>
-          <text x="802" y="120" text-anchor="middle" font-family="Geist Mono, monospace" font-size="12" fill="#8a93a3">premium</text>
-          <line x1="694" y1="176" x2="910" y2="186" stroke="#5d6575" stroke-width="2" marker-end="url(#arw)"/>
-          <text x="802" y="208" text-anchor="middle" font-family="Geist Mono, monospace" font-size="12" fill="#c9b0ff">option</text>
-
-          <!-- protocol <-> kuru: atomic delta hedge -->
-          <line x1="560" y1="242" x2="560" y2="330" stroke="#3ecf8e" stroke-width="2" marker-end="url(#arwg)" marker-start="url(#arwg)"/>
-          <text x="572" y="292" font-family="Geist Mono, monospace" font-size="12" fill="#3ecf8e">hedge delta</text>
-        </svg>
-
-        <div class="pillars">
-          <div class="pillar">
-            <svg width="54" height="54" viewBox="0 0 54 54" fill="none" aria-hidden="true">
-              <path d="M27 5 L45 13 V27 C45 39 37 46 27 50 C17 46 9 39 9 27 V13 Z" stroke="#8c52ff" stroke-width="2.5" fill="rgba(140,82,255,.08)"/>
-              <path d="M20 27 l5 5 l10 -12" stroke="#8c52ff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- UPSIDE (call) -->
+          <div class="payoff call">
+            <svg viewBox="0 0 460 250" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Upside call payoff: flat at minus the premium while the price is below the strike, then rising one-for-one above the strike">
+              <text x="34" y="26" font-family="Geist Mono, monospace" font-size="12" fill="#8a93a3">your P&amp;L</text>
+              <!-- axes -->
+              <line x1="40" y1="30" x2="40" y2="200" stroke="#2c323d" stroke-width="1.5"/>
+              <line x1="34" y1="150" x2="430" y2="150" stroke="#2c323d" stroke-width="1.5"/>
+              <text x="398" y="170" font-family="Geist Mono, monospace" font-size="12" fill="#5d6575">price →</text>
+              <!-- strike marker -->
+              <line x1="230" y1="40" x2="230" y2="190" stroke="#5d6575" stroke-width="1" stroke-dasharray="3 6"/>
+              <text x="230" y="214" text-anchor="middle" font-family="Geist Mono, monospace" font-size="11" fill="#8a93a3">STRIKE</text>
+              <!-- premium loss band -->
+              <rect x="40" y="150" width="190" height="34" fill="#f2555a" opacity=".10"/>
+              <!-- payoff line -->
+              <path d="M40 184 L230 184 L410 44" stroke="#3ecf8e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="135" y="202" text-anchor="middle" font-family="Geist Mono, monospace" font-size="11" fill="#f2555a">lose only the premium</text>
+              <text x="360" y="60" text-anchor="middle" font-family="Geist Mono, monospace" font-size="11" fill="#3ecf8e">gain the move</text>
             </svg>
-            <div class="cap">Fully collateralized</div>
+            <div class="pt">UPSIDE · call</div>
+            <div class="ps">The right to <b>buy</b> at the strike. Leverage with a known worst case.</div>
+            <div class="rules">
+              <div class="rule"><span class="arm up">Stock up →</span><span>profit rises with the stock, no cap</span></div>
+              <div class="rule"><span class="arm">Stock down →</span><span>walk away, you only lose the premium</span></div>
+            </div>
           </div>
-          <div class="pillar">
-            <svg width="54" height="54" viewBox="0 0 54 54" fill="none" aria-hidden="true">
-              <circle cx="27" cy="27" r="9" stroke="#3ecf8e" stroke-width="2.5" fill="none"/>
-              <path d="M27 6 V14 M27 40 V48 M6 27 H14 M40 27 H48" stroke="#3ecf8e" stroke-width="2.5" stroke-linecap="round"/>
-              <path d="M12 12 L18 18 M42 42 L36 36 M42 12 L36 18 M12 42 L18 36" stroke="#3ecf8e" stroke-width="2" stroke-linecap="round"/>
+
+          <!-- FLOOR (put) -->
+          <div class="payoff put">
+            <svg viewBox="0 0 460 250" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Floor put payoff: your sale value is held flat at the strike no matter how far the stock gaps down, versus the bare stock which keeps falling">
+              <text x="34" y="26" font-family="Geist Mono, monospace" font-size="12" fill="#8a93a3">your value</text>
+              <!-- axes -->
+              <line x1="40" y1="30" x2="40" y2="200" stroke="#2c323d" stroke-width="1.5"/>
+              <line x1="34" y1="150" x2="430" y2="150" stroke="#2c323d" stroke-width="1.5"/>
+              <text x="398" y="170" font-family="Geist Mono, monospace" font-size="12" fill="#5d6575">price →</text>
+              <!-- strike marker -->
+              <line x1="210" y1="40" x2="210" y2="190" stroke="#5d6575" stroke-width="1" stroke-dasharray="3 6"/>
+              <text x="210" y="214" text-anchor="middle" font-family="Geist Mono, monospace" font-size="11" fill="#8a93a3">STRIKE</text>
+              <!-- protected band -->
+              <rect x="40" y="86" width="170" height="64" fill="#8c52ff" opacity=".12"/>
+              <!-- bare stock keeps falling (dashed red) -->
+              <path d="M400 50 L210 100 L70 184" stroke="#f2555a" stroke-width="3" stroke-dasharray="4 6" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+              <text x="330" y="44" font-family="Geist Mono, monospace" font-size="11" fill="#f2555a">bare stock crashes</text>
+              <!-- floor line: tracks stock above strike, flat at strike below -->
+              <path d="M400 50 L210 100 L40 100" stroke="#8c52ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="120" y="80" text-anchor="middle" font-family="Geist Mono, monospace" font-size="11" fill="#c9b0ff">floor holds</text>
             </svg>
-            <div class="cap">Hedged on Kuru</div>
+            <div class="pt">FLOOR · put</div>
+            <div class="ps">The right to <b>sell</b> at the strike. A hard floor under your stock.</div>
+            <div class="rules">
+              <div class="rule"><span class="arm up">Stock up →</span><span>keep it, let the floor expire</span></div>
+              <div class="rule"><span class="arm">Gap down →</span><span>sell at the strike, any time — even Saturday</span></div>
+            </div>
           </div>
-          <div class="pillar">
-            <svg width="54" height="54" viewBox="0 0 54 54" fill="none" aria-hidden="true">
-              <circle cx="27" cy="27" r="20" stroke="#f5b84a" stroke-width="2.5" fill="rgba(245,184,74,.07)"/>
-              <line x1="14" y1="40" x2="40" y2="14" stroke="#f5b84a" stroke-width="2.8" stroke-linecap="round"/>
-            </svg>
-            <div class="cap">No liquidations</div>
-          </div>
+
         </div>
       </section>
 
