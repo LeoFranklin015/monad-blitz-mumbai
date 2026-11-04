@@ -1,6 +1,15 @@
-# Weekend Options
+<div align="center">
 
-**Fully onchain options on tokenized stocks, built for Monad.**
+<img src="web/public/tagline.svg" alt="Weekend Options — Never get liquidated" width="720" />
+
+### [▶ Live demo — wknd.davinciin.xyz](https://wknd.davinciin.xyz/#pro)
+
+Fully onchain options on tokenized stocks, built for Monad.
+
+</div>
+
+---
+
 
 Tokenized stocks trade 24/7. Wall Street trades 32.5 hours of it. While the market is closed, stock tokens wick on thin liquidity, perps get liquidated, and stock-backed loans get wiped out by the Monday gap. Weekend Options sells the weekend — pay a known premium, cap your downside, and never get liquidated.
 
