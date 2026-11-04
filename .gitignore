@@ -14,3 +14,5 @@ deployments/*.json
 web/public/deployments
 !deployments/.gitkeep
 backend/data/
+OVERVIEW.md
+/weekend-options/

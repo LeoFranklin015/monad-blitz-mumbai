@@ -8,3 +8,4 @@ web/dist
 web/public/deployments
 backend/data
 deployments/*.json
+/weekend-options/
