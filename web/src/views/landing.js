@@ -60,8 +60,8 @@ function payoff(kind) {
 const PRODUCTS = [
   { k: "upside", name: "Upside", route: "pro", line: "Leverage with a fixed worst case. Nothing to liquidate.", worst: "The premium you paid", where: "Pro" },
   { k: "floor", name: "Floor", route: "pro", line: "Sell at a fixed price any time before expiry, even on Saturday.", worst: "The premium you paid", where: "Pro" },
-  { k: "protect", name: "Protect", route: "protect", line: "A stock-backed loan with a Floor bought from inside the lender. The wick can't liquidate it.", worst: "Loan interest plus the Floor premium", where: "Protect" },
-  { k: "earn", name: "Earn", route: "earn", line: "Write Upside against your xStocks and collect the premium, or deposit into Auto-Commit and it writes every week within fixed rules.", worst: "You give up gains above the agreed price", where: "Earn" },
+  { k: "protect", name: "Protect", route: "protect", line: "A stock-backed loan with a Floor bought from inside the lender. The wick can't liquidate it.", worst: "Loan interest plus the Floor premium", where: "Protect", soon: true },
+  { k: "earn", name: "Earn", route: "earn", line: "Write Upside against your xStocks and collect the premium, or deposit into Auto-Commit and it writes every week within fixed rules.", worst: "You give up gains above the agreed price", where: "Earn", soon: true },
 ];
 
 export function landing(root) {
@@ -173,17 +173,17 @@ export function landing(root) {
   <section class="lp-sec" aria-labelledby="lp-prod-h" id="lp-products">
     <div class="lp-sec__head">
       <h2 id="lp-prod-h">Know your worst case before you click.</h2>
-      <p>Four ways to use the gap. Each one is fully collateralized, so none of them can be liquidated.</p>
+      <p>Four ways to use the gap, each fully collateralized so none can be liquidated. Upside and Floor are live today; Protect and Earn are coming soon.</p>
     </div>
     <div class="lp-prod" role="table" aria-label="Products">
       <div class="lp-prod__r lp-prod__h" role="row"><span role="columnheader">Product</span><span role="columnheader">Payoff</span><span role="columnheader">What it does</span><span role="columnheader">Worst case</span><span role="columnheader"></span></div>
       ${PRODUCTS.map((p) => `
-      <a class="lp-prod__r lp-prod__r--${p.k}" role="row" href="#${p.route}" data-product="${p.name}">
+      <a class="lp-prod__r lp-prod__r--${p.k}${p.soon ? " lp-prod__r--soon" : ""}" role="row" href="#${p.route}" data-product="${p.name}">
         <span role="cell" class="lp-prod__name">${p.name}</span>
         <span role="cell">${payoff(p.k)}</span>
         <span role="cell" class="lp-prod__line">${p.line}</span>
         <span role="cell" class="lp-prod__worst"><span class="lp-prod__wk">Worst case</span>${p.worst}</span>
-        <span role="cell" class="lp-prod__go">Open in ${p.where} <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 9L9 3M4 3h5v5"/></svg></span>
+        <span role="cell" class="lp-prod__go">${p.soon ? `<span class="soon-tag">Coming soon</span>` : `Open in ${p.where} <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 9L9 3M4 3h5v5"/></svg>`}</span>
       </a>`).join("")}
     </div>
   </section>

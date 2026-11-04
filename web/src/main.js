@@ -5,14 +5,16 @@ import { renderAccount, setRefresh } from "./account.js";
 import { $, $$, toast, setErrorAbis } from "./ui.js";
 import { ethers } from "ethers";
 import { ABI } from "./chain.js";
-import { earn } from "./views/earn.js";
-import { protect } from "./views/protect.js";
+import { soon } from "./views/soon.js";
 import { portfolio } from "./views/portfolio.js";
 import { pro } from "./views/pro.js";
 import { landing } from "./views/landing.js";
 import { API_URL } from "./config.js";
 import { demo } from "./views/demo.js";
 
+// Earn and Protect aren't in the demo yet: their tabs show a coming-soon page. The demo runs in Pro.
+const earn = soon({ name: "Earn", line: "Write Upside against your xStocks and collect the premium, or deposit once into Auto-Commit and it writes every week within fixed rules.", detail: "Your stock stays fully collateralized in the protocol. The worst case is giving up gains above the price you agreed to." });
+const protect = soon({ name: "Protect", line: "A stock-backed loan with a Floor bought from inside the lender, so a weekend wick can't liquidate it.", detail: "The Floor guarantees a sale price for your collateral until Monday's open. The worst case is the loan interest plus the Floor premium." });
 const VIEWS = { home: landing, pro, earn, protect, portfolio };
 // Old links to the retired Trade view land in Pro; an empty hash is the landing.
 const ALIASES = { trade: "pro", "": "home" };

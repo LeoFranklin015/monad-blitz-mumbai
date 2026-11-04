@@ -940,3 +940,18 @@ a.lp-prod__r:hover .lp-prod__go { color: var(--text); }
 .pro-pick__custom::placeholder { color: var(--dim); }
 .pro-pick__custom:focus, .pro-pick__custom.on { border-color: var(--accent); background: rgba(140, 82, 255, .14); }
 .pro-pick__hint { font-size: 12px; color: var(--warn); }
+
+/* ── Coming soon (Earn, Protect) ───────────────────────────────────────── */
+.soon-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--warn); border: 1px solid rgba(245, 184, 74, .45); vertical-align: middle; }
+#nav button.nav-soon { color: var(--dim); }
+#nav button.nav-soon.on { color: var(--text); }
+.soon { max-width: 640px; margin: 12vh auto; padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
+.soon__tag { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--warn); }
+.soon__title { font-size: 48px; letter-spacing: -.02em; margin: 0; }
+.soon__line { font-size: 18px; color: var(--text); line-height: 1.5; margin: 0; }
+.soon__detail { color: var(--muted); line-height: 1.6; margin: 0; }
+.soon__live { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; margin-top: 8px; }
+.soon__dot { width: 8px; height: 8px; background: var(--up); box-shadow: 0 0 10px var(--up); }
+.soon__cta { align-self: flex-start; margin-top: 6px; padding: 12px 20px; background: var(--accent); color: #fff; font-family: var(--mono); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; text-decoration: none; }
+.soon__cta:hover { filter: brightness(1.1); }
+.lp-prod__r--soon { opacity: .7; }

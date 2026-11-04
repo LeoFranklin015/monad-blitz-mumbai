@@ -78,7 +78,8 @@ try {
   for (const v of ["earn", "protect", "portfolio"]) {
     await page.click(`#nav button[data-view="${v}"]`);
     await page.waitForTimeout(1500);
-    check(!(await page.$("main.pro-shell")) && (await page.locator("#view .hero h2").count()) === 1, `${v} renders in the normal shell`);
+    if (v === "portfolio") check(!(await page.$("main.pro-shell")) && (await page.locator("#view .hero h2").count()) === 1, `${v} renders in the normal shell`);
+    else check(!(await page.$("main.pro-shell")) && /Coming soon/i.test(await page.textContent("#view .soon__tag").catch(() => "")), `${v} shows its coming-soon page`);
   }
 
   const m = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });

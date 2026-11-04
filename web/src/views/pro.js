@@ -303,6 +303,7 @@ export function pro(root, refreshAll) {
     const sym = stockSymbol();
     const iv = activeInterval();
     const ohlc = await fetchOhlc(sym, iv);
+    if (!candleSeries || !volHistSeries) return; // the user left Pro (or the chart was rebuilt) while candles loaded
     if (ohlc.length) {
       candleSeries.setData(ohlc.map((c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close })));
       const validVol = ohlc.filter((c) => c.volume != null && c.volume > 0);
