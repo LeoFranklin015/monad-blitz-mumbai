@@ -43,6 +43,21 @@ let tradeHistoryCache = [];
 /** Debounce timer for form preview */
 let previewDeb = null;
 
+const TOKEN_LOGOS = {
+  NVDAx: "https://cdn.simpleicons.org/nvidia",
+  TSLAx: "https://cdn.simpleicons.org/tesla",
+  SPYx: "https://cdn.simpleicons.org/spglobal",
+};
+
+function tokenRibbon() {
+  const items = (D?.stocks || []).map((stock) => {
+    const price = S.spots[stock.address] || stock.spot || 0;
+    const logo = TOKEN_LOGOS[stock.symbol] || "";
+    return `<span class="pro-chart__ribbon-item"><span class="pro-chart__token-logo">${logo ? `<img src="${logo}" alt="" loading="lazy" onerror="this.style.display='none'" />` : ""}</span><b>${stock.symbol}</b><span>${fmt.usd(price)}</span></span>`;
+  }).join("");
+  return items ? `<div class="pro-chart__ribbon" aria-label="Token prices"><div class="pro-chart__ribbon-track"><div class="pro-chart__ribbon-group">${items}</div><div class="pro-chart__ribbon-group" aria-hidden="true">${items}</div></div></div>` : "";
+}
+
 // ─── Main export ─────────────────────────────────────────────────────────────
 
 export function pro(root, refreshAll) {
@@ -74,6 +89,7 @@ export function pro(root, refreshAll) {
 
     <!-- 2a. CHART -->
     <div class="pro-chart">
+      ${tokenRibbon()}
       <div class="pro-chart__toolbar">
         <button class="pro-chart__interval on" data-iv="1m">1m</button>
         <button class="pro-chart__interval" data-iv="5m">5m</button>
@@ -267,7 +283,7 @@ export function pro(root, refreshAll) {
     chartInst.priceScale("volume").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
 
     premLineSeries = chartInst.addSeries(LineSeries, {
-      color: "#7c9cff", lineWidth: 2,
+      color: "#8c52ff", lineWidth: 2,
       priceScaleId: "premium", title: "Fair value",
     });
     chartInst.priceScale("premium").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });

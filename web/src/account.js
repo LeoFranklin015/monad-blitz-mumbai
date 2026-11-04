@@ -31,11 +31,23 @@ export function openConnect() {
   const jawNote = !jawChainSupported()
     ? `Passkey accounts run on JAW chains such as Monad and Base Sepolia. This deployment is on chain ${D.chainId}.`
     : !JAW_API_KEY ? "Set VITE_JAW_API_KEY to enable passkey accounts." : "One tap with Face ID or a security key. No seed phrase, gas can be sponsored.";
-  m.innerHTML = html`<div class="card">
-    <div class="between"><h2>Connect</h2><button class="ghost sm" id="mClose">Close</button></div>
-    <button class="connect-opt" id="cJaw" ${jawOk ? "" : "disabled"}><b>Passkey account</b> <span class="tag">JAW</span><small>${jawNote}</small></button>
-    ${isLocal() ? `<button class="connect-opt" id="cLocal"><b>Demo account</b><small>Funded account on the local chain. Instant, no prompts.</small></button>` : ""}
-    <button class="connect-opt" id="cInj"><b>Browser wallet</b><small>MetaMask, Rabby or any injected wallet.</small></button>
+  m.innerHTML = html`<div class="card connect-modal">
+    <div class="connect-modal__head">
+      <img class="connect-modal__logo" src="/logo.png" alt="Weekend Options" />
+      <button class="ghost sm" id="mClose">Close</button>
+    </div>
+    <div class="connect-modal__intro"><h2>Connect wallet</h2><p>Choose how you want to access Weekend Options.</p></div>
+    <button class="connect-opt" id="cJaw" ${jawOk ? "" : "disabled"}>
+      <span class="connect-icon connect-icon--brand"><img src="/favicon.png" alt="" /></span>
+      <span class="connect-copy"><b>Passkey account</b><span class="tag">JAW</span><small>${jawNote}</small></span>
+      <span class="connect-arrow">→</span>
+    </button>
+    ${isLocal() ? `<button class="connect-opt" id="cLocal"><span class="connect-icon connect-icon--demo">⌁</span><span class="connect-copy"><b>Demo account</b><small>Funded local account. Instant, no prompts.</small></span><span class="connect-arrow">→</span></button>` : ""}
+    <button class="connect-opt" id="cInj">
+      <span class="connect-icon connect-icon--wallets"><img src="/metamask.svg" alt="MetaMask" /><img src="/rabby.svg" alt="Rabby" /></span>
+      <span class="connect-copy"><b>Browser wallet</b><small>MetaMask, Rabby, or another injected wallet.</small></span>
+      <span class="connect-arrow">→</span>
+    </button>
   </div>`;
   m.hidden = false;
   const close = () => (m.hidden = true);
