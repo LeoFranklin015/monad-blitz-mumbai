@@ -6,6 +6,7 @@ const devHost = ["localhost", "127.0.0.1"].includes(location.hostname) || locati
 export const API_URL = import.meta.env.VITE_API_URL || (devHost ? `http://${location.hostname}:8787` : "/api");
 export const JAW_API_KEY = import.meta.env.VITE_JAW_API_KEY || "";
 export const PAYMASTER_URL = import.meta.env.VITE_PAYMASTER_URL || "";
+export const ALCHEMY_KEY = import.meta.env.VITE_ALCHEMY_KEY || "";
 
 
 export const KIND = { CALL: 0, PUT: 1, CALL_SPREAD: 2, PUT_SPREAD: 3 };

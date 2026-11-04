@@ -31,8 +31,9 @@ export async function load() {
   if (!d || !a) throw new Error(`No deployment for "${NETWORK}". Run the deploy script first.`);
   D = d;
   ABI = a;
-  const rpc = D.chainId === 31337 ? `http://${location.hostname}:8545` : D.rpc;
-  read = new ethers.JsonRpcProvider(rpc, D.chainId, { staticNetwork: true, batchMaxCount: 100 });
+  const rpc = D.chainId === 31337 ? `http://${location.hostname}:8545` : (D.rpc.startsWith("/") ? location.origin + D.rpc : D.rpc);
+  // Monad testnet RPCs choke on large batches ("queue size exceeded"); keep batches small.
+  read = new ethers.JsonRpcProvider(rpc, D.chainId, { staticNetwork: true, batchMaxCount: 5 });
   S.stock = D.stocks[0];
   return D;
 }
@@ -85,22 +86,36 @@ export async function loadSeries() {
   return S.series;
 }
 
+let _lastChainFetch = 0;
+
 export async function refreshMarket() {
-  const o = C.oracle();
-  const [blk, ...sp] = await Promise.all([read.getBlock("latest"), ...D.stocks.map((s) => o.spot(s.address))]);
-  S.now = blk.timestamp;
-  D.stocks.forEach((s, i) => (S.spots[s.address] = fromUsd(sp[i][0]) || s.spot));
+  // Use wall clock for market-hours check every tick — no RPC needed.
+  S.now = Math.floor(Date.now() / 1000);
   const d = new Date(S.now * 1000), day = d.getUTCDay(), m = d.getUTCHours() * 60 + d.getUTCMinutes();
   S.closed = day === 0 || day === 6 || m < 810 || m >= 1200;
+
+  // Fetch backend /markets first — it already has fresh spot prices from the chain.
   try {
     const r = await fetch(`${API_URL}/markets`);
     const j = await r.json();
     S.fair = new Map(j.series.map((x) => [x.id, x]));
     S.quotesPerSec = j.quotesPerSec;
     S.apiUp = true;
+    // Prefer backend spot prices to avoid extra oracle RPC calls.
+    if (j.spots) D.stocks.forEach((s) => { if (j.spots[s.address]) S.spots[s.address] = j.spots[s.address]; });
   } catch {
     S.apiUp = false;
   }
+
+  // Only hit the chain for oracle spot + block timestamp every 30s.
+  if (Date.now() - _lastChainFetch < 30_000) return;
+  _lastChainFetch = Date.now();
+  try {
+    const o = C.oracle();
+    const [blk, ...sp] = await Promise.all([read.getBlock("latest"), ...D.stocks.map((s) => o.spot(s.address))]);
+    if (blk) S.now = blk.timestamp;
+    D.stocks.forEach((s, i) => { if (sp[i]) S.spots[s.address] = fromUsd(sp[i][0]) || S.spots[s.address] || s.spot; });
+  } catch { /* keep cached */ }
 }
 
 export const liveSeries = (stock) => S.series.filter((s) => s.stock === stock && s.expiry > S.now);
