@@ -6,6 +6,7 @@ import { W, sendCalls, approvals, onChange as onWalletChange } from "../wallet.j
 import { API_URL, PRODUCTS, SLIPPAGE_BPS } from "../config.js";
 import { $$, html, fmt, act, on, toast, errMsg } from "../ui.js";
 import { openConnect } from "../account.js";
+import { simulate, positionsAt } from "../sim.js";
 
 // ─── Module-level state ──────────────────────────────────────────────────────
 
@@ -16,7 +17,8 @@ const T = {
   kind: 0,           // option kind 0–3
   expiry: null,      // selected expiry timestamp
   seriesId: null,    // selected series id (number)
-  amount: 10,        // shares (number)
+  amount: 0.1,       // options (number); the demo book quotes 0.1 to 1 at a time
+  simPx: null,       // "what you might get": the NVDAx price you expect at Monday's open (null = current spot)
   limitPrice: "",    // USDC per share (string for input binding)
 };
 
@@ -99,7 +101,7 @@ export function pro(root, refreshAll) {
         <button class="pro-chart__interval" data-iv="1D">1D</button>
         <button class="pro-chart__interval" data-iv="1W">1W</button>
       </div>
-      <div class="pro-chart__mount" id="pro-chart-mount"></div>
+      <div class="pro-chart__mount" id="pro-chart-mount"><div class="pro-hover" id="pro-hover" hidden></div></div>
     </div>
 
     <!-- 2b. ORDERBOOK + TRADES -->
@@ -136,7 +138,8 @@ export function pro(root, refreshAll) {
         <button class="pro-form__type-tab on" data-type="market">Market</button>
         <button class="pro-form__type-tab" data-type="limit">Limit</button>
       </div>
-      <button class="pro-form__series" id="pro-series-btn" aria-expanded="false">
+      <div class="pro-pick" id="pro-pick"></div>
+      <button class="pro-form__series" id="pro-series-btn" aria-expanded="false" hidden>
         <span class="pro-form__series-badge" id="pro-kind-badge">Upside</span>
         <span class="pro-form__series-label" id="pro-series-label">Select a series</span>
         <span class="pro-form__series-chevron">▾</span>
@@ -146,10 +149,10 @@ export function pro(root, refreshAll) {
         <div class="pro-series-panel__expiry-chips" id="pro-expiry-chips"></div>
         <div class="pro-series-panel__strikes" id="pro-strike-list"></div>
       </div>
-      <div class="pro-form__inputs" id="pro-form-inputs">
+      <div class="pro-form__inputs" id="pro-form-inputs" hidden>
         <label>
           <span>Amount (shares)</span>
-          <input id="pro-amt" type="number" min="0.1" step="1" value="10" />
+          <input id="pro-amt" type="number" min="0.01" step="0.1" value="0.1" />
         </label>
         <label id="pro-limit-row" hidden>
           <span>Limit Price (USDC / share)</span>
@@ -159,6 +162,7 @@ export function pro(root, refreshAll) {
       <div class="pro-form__stats" id="pro-form-stats"></div>
       <button class="pro-form__action pro-form__action--buy" id="pro-action-btn">Connect to buy</button>
       <div class="pro-form__balance" id="pro-balance">Available: — USDC</div>
+      <div class="pro-sim" id="pro-sim"></div>
     </div>
 
   </div>
@@ -287,6 +291,13 @@ export function pro(root, refreshAll) {
       priceScaleId: "premium", title: "Fair value",
     });
     chartInst.priceScale("premium").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+    chartInst.subscribeCrosshairMove(onChartHover);
+    chartInst.subscribeClick((param) => {
+      if (!param.point || !candleSeries) return;
+      const px = candleSeries.coordinateToPrice(param.point.y);
+      if (px > 0) { T.simPx = Math.round(px * 100) / 100; renderSim().catch(() => {}); }
+    });
 
     // Load candle data
     const sym = stockSymbol();
@@ -565,6 +576,7 @@ export function pro(root, refreshAll) {
         ? list.find((s) => s.strike >= spot)
         : [...list].reverse().find((s) => s.strike <= spot);
       T.seriesId = (otm || list[0])?.id ?? null;
+      T.autoPicked = true; // replaced below by the nearest strike with asks, if this one has none
     }
 
     if (!list.length) {
@@ -575,12 +587,23 @@ export function pro(root, refreshAll) {
     strikeList.innerHTML = `<div class="empty" style="padding:8px;font-size:12px">Loading premiums…</div>`;
 
     const proto = C.protocol();
-    const quotes = await Promise.all(list.map((s) => proto.quoteBuy(s.id, sh(1)).catch(() => [0n, 0n])));
+    // Price each strike at the ticket's own size, so a 0.1 ask counts as available for a 0.1 order.
+    const want = sh(T.amount || 0.1);
+    const quotes = await Promise.all(list.map((s) => proto.quoteBuy(s.id, want).catch(() => [0n, 0n])));
+    const available = (i) => quotes[i][1] >= want;
+
+    // Pro picked this strike itself and nobody is selling it: move to the closest strike that has asks.
+    const sel = list.findIndex((s) => s.id === T.seriesId);
+    if (T.autoPicked && sel >= 0 && !available(sel)) {
+      const spot = S.spots[S.stock?.address] || 0;
+      const best = list.map((s, i) => ({ s, i })).filter(({ i }) => available(i)).sort((a, b) => Math.abs(a.s.strike - spot) - Math.abs(b.s.strike - spot))[0];
+      if (best) { T.seriesId = best.s.id; updateSeriesLabel(); debouncedPreview(); }
+    }
 
     strikeList.innerHTML = list.map((s, i) => {
       const [prem, fill] = quotes[i];
       const label = s.kind >= 2 ? `$${s.strike}–$${s.strike2}` : `$${s.strike}`;
-      const premStr = fill >= sh(1) ? fmt.usd(fromUsd(prem), 3) : "no asks";
+      const premStr = available(i) ? fmt.usd(fromUsd(prem) / (T.amount || 0.1), 3) : "no asks";
       return html`<div class="pro-strike-row ${s.id === T.seriesId ? "on" : ""}" data-id="${s.id}">
         <span>${label}</span><span class="prem">${premStr} / sh</span>
       </div>`;
@@ -591,6 +614,7 @@ export function pro(root, refreshAll) {
       const b = e.target.closest("[data-id]");
       if (!b) return;
       T.seriesId = Number(b.dataset.id);
+      T.autoPicked = false; // the owner chose it: keep it even with no asks
       collapseSeriesPanel();
       updateSeriesLabel();
       debouncedPreview();
@@ -620,6 +644,7 @@ export function pro(root, refreshAll) {
   }
 
   async function renderFormStats() {
+    renderSim().catch(() => {});
     const statsEl = q("#pro-form-stats");
     const actionBtn = q("#pro-action-btn");
     const balanceEl = q("#pro-balance");
@@ -740,6 +765,230 @@ export function pro(root, refreshAll) {
     }
   }
 
+  // ── Simple ticket: Upside or Floor, the nearest expiry, 2-3 strikes that have sellers, a few sizes ──
+
+  const PICK_SIZES = [0.1, 0.5, 1];
+  async function renderPicker() {
+    const el = q("#pro-pick");
+    if (!el) return;
+    if (T.kind > 1) T.kind = 0;
+    const exp = expiriesOf(S.stock)[0];
+    if (exp != null && T.expiry !== exp) { T.expiry = exp; T.seriesId = null; }
+    const spot = S.spots[S.stock?.address] || 0;
+    const list = liveSeries(S.stock).filter((x) => x.kind === T.kind && x.expiry === T.expiry).sort((a, b) => a.strike - b.strike);
+    const proto = C.protocol();
+    const quotes = await Promise.all(list.map((x) => proto.quoteBuy(x.id, sh(PICK_SIZES[0])).catch(() => [0n, 0n])));
+    // Up to 3 strikes with sellers, closest to the price; strikes nobody sells are left out.
+    let cards = list.map((x, i) => ({ s: x, per: fromUsd(quotes[i][0]) / PICK_SIZES[0], ok: quotes[i][1] >= sh(PICK_SIZES[0]) }))
+      .filter((c) => c.ok).sort((a, b) => Math.abs(a.s.strike - spot) - Math.abs(b.s.strike - spot)).slice(0, 3).sort((a, b) => a.s.strike - b.s.strike);
+    // Default to the strike closest to the price: the clearest one to demo.
+    if (!cards.find((c) => c.s.id === T.seriesId)) T.seriesId = [...cards].sort((a, b) => Math.abs(a.s.strike - spot) - Math.abs(b.s.strike - spot))[0]?.s.id ?? null;
+    const sel = cards.find((c) => c.s.id === T.seriesId);
+    // Sizes the book can fill for the selected strike.
+    const fills = sel ? await Promise.all(PICK_SIZES.map((n) => proto.quoteBuy(sel.s.id, sh(n)).then((r) => r[1] >= sh(n)).catch(() => false))) : PICK_SIZES.map(() => false);
+    if (!PICK_SIZES.includes(T.amount) || !fills[PICK_SIZES.indexOf(T.amount)]) T.amount = PICK_SIZES[Math.max(0, fills.lastIndexOf(true) >= 0 ? fills.indexOf(true) : 0)];
+    const blurb = T.kind === 0 ? "Profit if NVDAx rises. Worst case: what you pay." : "Sell at a fixed price, even on Saturday. Worst case: what you pay.";
+    el.innerHTML = html`
+      <div class="pro-pick__kinds">
+        <button class="pro-pick__kind ${T.kind === 0 ? "on up" : ""}" data-kind="0"><b>Upside</b><small>if it goes up</small></button>
+        <button class="pro-pick__kind ${T.kind === 1 ? "on down" : ""}" data-kind="1"><b>Floor</b><small>if it goes down</small></button>
+      </div>
+      <div class="pro-pick__blurb">${blurb}</div>
+      <div class="pro-pick__label">${T.kind === 0 ? "Pays above" : "Pays below"}</div>
+      <div class="pro-pick__strikes">
+        ${cards.length ? cards.map((c) => `<button class="pro-pick__strike ${c.s.id === T.seriesId ? "on" : ""}" data-id="${c.s.id}"><b>$${c.s.strike}</b><small>${fmt.usd(c.per)} / option</small></button>`).join("") : `<div class="pro-pick__empty">No sellers right now. Quotes refresh every few seconds.</div>`}
+      </div>
+      <div class="pro-pick__label">Size</div>
+      <div class="pro-pick__sizes">
+        ${PICK_SIZES.map((n, i) => `<button class="pro-pick__size ${n === T.amount ? "on" : ""}" data-n="${n}" ${fills[i] ? "" : "disabled"}>${n}</button>`).join("")}
+      </div>`;
+    updateSeriesLabel();
+    el.onclick = (e) => {
+      const k = e.target.closest("[data-kind]"), st = e.target.closest("[data-id]"), n = e.target.closest("[data-n]");
+      if (k) { T.kind = Number(k.dataset.kind); T.seriesId = null; T.simPx = null; }
+      else if (st) T.seriesId = Number(st.dataset.id);
+      else if (n && !n.disabled) { T.amount = Number(n.dataset.n); const a = q("#pro-amt"); if (a) a.value = T.amount; }
+      else return;
+      updateSeriesLabel();
+      renderPicker().then(() => { renderBook().catch(() => {}); debouncedPreview(); }).catch(() => {});
+    };
+  }
+
+  /// Pro picked the strike itself and nobody is selling it at the ticket size: switch to the closest strike that has asks.
+  async function preferAvailable(list) {
+    const sel = list.find((x) => x.id === T.seriesId);
+    if (!T.autoPicked || !sel) return;
+    const want = sh(T.amount || 0.1);
+    const proto = C.protocol();
+    const [, fill] = await proto.quoteBuy(sel.id, want).catch(() => [0n, 0n]);
+    if (fill >= want) return;
+    const fills = await Promise.all(list.map((x) => proto.quoteBuy(x.id, want).then((r) => r[1]).catch(() => 0n)));
+    const spot = S.spots[S.stock?.address] || 0;
+    const best = list.filter((_, i) => fills[i] >= want).sort((a, b) => Math.abs(a.strike - spot) - Math.abs(b.strike - spot))[0];
+    if (best) T.seriesId = best.id;
+  }
+
+  // ── What you might get ─────────────────────────────────────────────────────
+  // Same settlement math as the contract (sim.js): type or click a Monday-open price and see the payout.
+
+  let simPremium = { key: "", value: 0 };
+  async function ticketPremium(s) {
+    const key = `${s.id}:${T.amount}`;
+    if (simPremium.key !== key) {
+      const [prem, fill] = await C.protocol().quoteBuy(s.id, sh(T.amount)).catch(() => [0n, 0n]);
+      simPremium = { key, value: fromUsd(prem), filled: fromSh(fill) >= T.amount };
+    }
+    return simPremium;
+  }
+
+  function payoffSvg(s, amount, premium, spot, at) {
+    const lo = spot * 0.8, hi = spot * 1.2, W_ = 260, H = 84, n = 48;
+    const pts = Array.from({ length: n + 1 }, (_, i) => { const P = lo + ((hi - lo) * i) / n; return [P, simulate(s, P, amount, premium).pnl]; });
+    const ys = pts.map((p) => p[1]);
+    const yMin = Math.min(...ys, 0), yMax = Math.max(...ys, 0), span = yMax - yMin || 1;
+    const X = (P) => ((P - lo) / (hi - lo)) * W_, Y = (v) => H - 6 - ((v - yMin) / span) * (H - 12);
+    const line = pts.map(([P, v], i) => `${i ? "L" : "M"}${X(P).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    const atP = Math.min(hi, Math.max(lo, at));
+    const atV = simulate(s, atP, amount, premium).pnl;
+    return `<svg class="pro-sim__curve" viewBox="0 0 ${W_} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="0" x2="${W_}" y1="${Y(0)}" y2="${Y(0)}" class="zero"/>
+      <line x1="${X(spot)}" x2="${X(spot)}" y1="0" y2="${H}" class="spot"/>
+      <path d="${line}" class="pnl"/>
+      <circle cx="${X(atP)}" cy="${Y(atV)}" r="3.5" class="${atV >= 0 ? "up" : "down"}"/>
+    </svg>`;
+  }
+
+  /// One "what you might get" card. `ctx`: { s, amount, premium, estimated, getPx, setPx, title, note }.
+  /// Used by the ticket (before you buy) and by the trade popup (the position you just bought).
+  function drawSim(el, ctx) {
+    const { s, amount, premium, estimated } = ctx;
+    const spot = S.spots[S.stock.address] || s.stock.spot;
+    const P = ctx.getPx() ?? Math.round(spot * 100) / 100;
+    const r = simulate(s, P, amount, premium);
+    const got = r.receive.token === "USDC" ? fmt.usd(r.receive.amount) : `${fmt.sh(r.receive.amount, 4)} ${r.receive.token}`;
+    const chip = (pct) => { const v = Math.round(spot * (1 + pct / 100) * 100) / 100; return `<button class="pro-sim__chip ${Math.abs(v - P) < 0.01 ? "on" : ""}" data-px="${v}">${pct === 0 ? "now" : (pct > 0 ? "+" : "") + pct + "%"}</button>`; };
+    el.innerHTML = html`
+      <div class="pro-sim__head"><span>${ctx.title || "What you might get"}</span><span class="pro-sim__hint">${ctx.hint || ""}</span></div>
+      <label class="pro-sim__px"><span>${s.stock.symbol} at Monday's open</span>
+        <span class="pro-sim__px-input"><b>$</b><input class="pro-sim-px" type="number" step="0.5" value="${P}" /></span></label>
+      <div class="pro-sim__chips">${[-10, -5, 0, 5, 10].map(chip).join("")}</div>
+      ${payoffSvg(s, amount, premium, spot, P)}
+      <div class="pro-sim__rows">
+        ${statRow("You receive", got)}
+        ${statRow("Worth", fmt.usd(r.receive.usd))}
+        ${statRow(estimated ? "Premium (est. fair value)" : "Premium paid", premium ? fmt.usd(premium) : "—")}
+        <div class="pro-form__stat-row pro-sim__pnl ${r.pnl >= 0 ? "up" : "down"}"><span class="k">Profit / loss</span><span class="v">${premium ? `${r.pnl >= 0 ? "+" : "−"}${fmt.usd(Math.abs(r.pnl))}` : "—"}</span></div>
+        ${statRow("Break-even", fmt.usd(r.breakEven))}
+        ${r.maxPayout != null ? statRow("Best case", fmt.usd(r.maxPayout)) : ""}
+      </div>
+      <div class="pro-sim__note">${ctx.note || (s.kind === 0 ? `Settles in ${s.stock.symbol} shares, paid automatically at expiry. Worst case: the premium.` : "Settles in USDC, paid automatically at expiry. Worst case: the premium.")}</div>`;
+    const redraw = () => drawSim(el, ctx);
+    el.querySelector(".pro-sim-px").onchange = (e) => { const v = Number(e.target.value); ctx.setPx(v > 0 ? v : null); redraw(); };
+    el.querySelectorAll(".pro-sim__chip").forEach((b) => (b.onclick = () => { ctx.setPx(Number(b.dataset.px)); redraw(); }));
+  }
+
+  async function renderSim() {
+    const el = q("#pro-sim");
+    if (!el) return;
+    const s = seriesById(T.seriesId);
+    if (!s || T.side !== "buy") { el.innerHTML = ""; return; }
+    const book = await ticketPremium(s);
+    const fair = S.fair?.get(s.id)?.fair || 0;
+    const estimated = !(book.value > 0 && book.filled) && fair > 0; // no asks: price it at the backend's fair value
+    drawSim(el, {
+      s, amount: T.amount, premium: estimated ? fair * T.amount : book.value, estimated,
+      getPx: () => T.simPx, setPx: (v) => (T.simPx = v), hint: "click the chart to pick a price",
+    });
+  }
+
+  /// After a buy lands: a receipt and the simulator for exactly what was bought.
+  function showTradePopup({ s, amount, premium, hash }) {
+    const m = document.getElementById("modal");
+    if (!m) return;
+    const label = `${PRODUCTS[s.kind].name} ${s.stock.symbol} $${s.strike}${s.strike2 ? "–$" + s.strike2 : ""}`;
+    const explorer = D.chainId === 10143 && hash ? `https://testnet.monadvision.com/tx/${hash}` : null;
+    let px = T.simPx;
+    m.innerHTML = html`<div class="card pro-receipt" role="dialog" aria-label="Trade placed">
+      <div class="pro-receipt__head">
+        <span class="pro-receipt__tick" aria-hidden="true">✓</span>
+        <div><div class="pro-receipt__title">Trade placed</div>
+          <div class="pro-receipt__sub">Bought ${fmt.sh(amount, 4)} ${label}</div></div>
+        <button class="ghost sm" id="pro-receipt-close">Close</button>
+      </div>
+      <div class="pro-receipt__facts">
+        <div><span>Paid</span><b>${fmt.usd(premium)}</b></div>
+        <div><span>Worst case</span><b>−${fmt.usd(premium)}</b></div>
+        <div><span>Liquidation</span><b class="up">None</b></div>
+        <div><span>Expires</span><b>${fmt.date(s.expiry)}</b></div>
+      </div>
+      <div class="pro-sim pro-receipt__sim" id="pro-receipt-sim"></div>
+      <div class="pro-receipt__foot">
+        ${explorer ? `<a href="${explorer}" target="_blank" rel="noopener">View transaction ↗</a>` : `<span class="dim mono">${hash ? fmt.addr(hash) : ""}</span>`}
+        <button class="primary sm" id="pro-receipt-done">Done</button>
+      </div>
+    </div>`;
+    m.hidden = false;
+    drawSim(m.querySelector("#pro-receipt-sim"), {
+      s, amount, premium, estimated: false, getPx: () => px, setPx: (v) => { px = v; T.simPx = v; },
+      title: "What you might get on Monday", hint: "drag the price, see your payout",
+    });
+    const close = () => { m.hidden = true; m.innerHTML = ""; };
+    m.querySelector("#pro-receipt-close").onclick = close;
+    m.querySelector("#pro-receipt-done").onclick = close;
+    m.onclick = null; // only Done / Close dismiss it: a stray click outside must not lose the receipt
+  }
+
+  // Held positions in this stock, with what they cost (remembered at buy time, else from recent fills).
+  let held = [], heldAt = 0;
+  const costKey = (id) => `wkend.cost.${D.chainId}.${(W.address || "").toLowerCase()}.${id}`;
+  function rememberCost(id, usdPaid) {
+    try { localStorage.setItem(costKey(id), String((Number(localStorage.getItem(costKey(id))) || 0) + usdPaid)); } catch {}
+  }
+  async function loadHeld() {
+    if (!W.address) { held = []; return held; }
+    if (Date.now() - heldAt < 20_000) return held;
+    heldAt = Date.now();
+    const list = (S.stock.series || []).filter((s) => s.expiry > S.now);
+    const bals = await Promise.all(list.map((s) => C.token(s.token).balanceOf(W.address).catch(() => 0n)));
+    held = list.map((s, i) => ({ series: seriesById(s.id) || s, amount: fromSh(bals[i]) })).filter((h) => h.amount > 1e-9).map((h) => {
+      let cost = null;
+      try { const c = localStorage.getItem(costKey(h.series.id)); if (c != null) cost = Number(c); } catch {}
+      if (cost == null) {
+        const buys = tradeHistoryCache.filter((t) => t.isBuy && Number(t.e.args.seriesId) === h.series.id);
+        if (buys.length) cost = buys.reduce((a, t) => a + fromUsd(t.e.args.price) * fromSh(t.e.args.amount), 0);
+      }
+      return { ...h, cost: cost ?? 0, costKnown: cost != null };
+    });
+    return held;
+  }
+
+  function onChartHover(param) {
+    const tip = q("#pro-hover");
+    if (!tip || !candleSeries) return;
+    if (!param.point) { tip.hidden = true; return; }
+    const P = candleSeries.coordinateToPrice(param.point.y);
+    if (!(P > 0)) { tip.hidden = true; return; }
+    loadHeld().catch(() => {});
+    const parts = [`<div class="pro-hover__px">If ${S.stock.symbol} settles Monday at <b>${fmt.usd(P)}</b></div>`];
+    if (held.length) {
+      const at = positionsAt(held, P);
+      const allCosts = held.every((h) => h.costKnown);
+      parts.push(`<div class="pro-hover__row"><span>Your ${held.length === 1 ? "position pays" : `${held.length} positions pay`}</span><b>${fmt.usd(at.usd)}</b></div>`);
+      if (allCosts) parts.push(`<div class="pro-hover__row ${at.pnl >= 0 ? "up" : "down"}"><span>Profit / loss</span><b>${at.pnl >= 0 ? "+" : "−"}${fmt.usd(Math.abs(at.pnl))}</b></div>`);
+    }
+    const s = seriesById(T.seriesId);
+    if (s && T.side === "buy") {
+      const r = simulate(s, P, T.amount, simPremium.value);
+      parts.push(`<div class="pro-hover__row dim"><span>This ticket (${fmt.sh(T.amount, 2)} ${PRODUCTS[s.kind].name} $${s.strike}${s.strike2 ? "–$" + s.strike2 : ""})</span><b>${fmt.usd(r.receive.usd)}</b></div>`);
+    }
+    tip.innerHTML = parts.join("");
+    tip.hidden = false;
+    const mount = q("#pro-chart-mount");
+    const x = Math.min(param.point.x + 16, mount.clientWidth - tip.offsetWidth - 70);
+    const y = Math.max(8, Math.min(param.point.y - tip.offsetHeight - 12, mount.clientHeight - tip.offsetHeight - 8));
+    tip.style.transform = `translate(${x}px, ${y}px)`;
+  }
+
   function statRow(k, v) {
     return html`<div class="pro-form__stat-row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   }
@@ -759,7 +1008,10 @@ export function pro(root, refreshAll) {
     const maxCost = (prem * (10000n + SLIPPAGE_BPS)) / 10000n + 1n;
     await act("Buying", async () => {
       const approveCalls = await approvals(D.usdc, D.protocol, maxCost);
-      await sendCalls([...approveCalls, call(D.protocol, "OptionsProtocol", "buy", [s.id, amt, maxCost, W.address])]);
+      const rc = await sendCalls([...approveCalls, call(D.protocol, "OptionsProtocol", "buy", [s.id, amt, maxCost, W.address])]);
+      rememberCost(s.id, fromUsd(prem));
+      heldAt = 0; // reload held positions
+      showTradePopup({ s, amount: T.amount, premium: fromUsd(prem), hash: rc?.hash || rc?.transactionHash || rc?.receipts?.[0]?.transactionHash });
     }, refreshAll);
   }
 
@@ -1133,7 +1385,7 @@ export function pro(root, refreshAll) {
 
     // Amount input
     q("#pro-amt").oninput = (e) => {
-      T.amount = Math.max(0.1, Number(e.target.value) || 0);
+      T.amount = Math.max(0.01, Number(e.target.value) || 0);
       debouncedPreview();
     };
 
@@ -1177,7 +1429,10 @@ export function pro(root, refreshAll) {
         ? list.find((s) => s.strike >= spot)
         : [...list].reverse().find((s) => s.strike <= spot);
       T.seriesId = (otm || list[0])?.id ?? null;
+      T.autoPicked = true;
     }
+    await preferAvailable(list);
+    await renderPicker().catch(() => {});
     updateSeriesLabel();
 
     await buildChart();

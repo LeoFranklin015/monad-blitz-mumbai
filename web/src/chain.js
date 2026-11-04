@@ -7,7 +7,8 @@ export let read = null;
 export const LOCAL_RPC = "http://127.0.0.1:8545";
 
 export const usd = (x) => ethers.parseUnits(Math.max(0, Number(x)).toFixed(6), 6);
-export const sh = (x) => ethers.parseEther(Number(x).toFixed(18).replace(/\.?0+$/, "") || "0");
+// 12 decimals, not 18: toFixed(18) exposes float noise (0.1 became 0.100000000000000006 options).
+export const sh = (x) => ethers.parseEther(Number(x).toFixed(12).replace(/\.?0+$/, "") || "0");
 export const fromUsd = (v) => Number(ethers.formatUnits(v, 6));
 export const fromSh = (v) => Number(ethers.formatEther(v));
 

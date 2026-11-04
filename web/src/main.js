@@ -5,16 +5,24 @@ import { renderAccount, setRefresh } from "./account.js";
 import { $, $$, toast, setErrorAbis } from "./ui.js";
 import { ethers } from "ethers";
 import { ABI } from "./chain.js";
-import { trade } from "./views/trade.js";
 import { earn } from "./views/earn.js";
 import { protect } from "./views/protect.js";
 import { portfolio } from "./views/portfolio.js";
 import { pro } from "./views/pro.js";
+import { landing } from "./views/landing.js";
+import { API_URL } from "./config.js";
 import { demo } from "./views/demo.js";
 
-const VIEWS = { trade, earn, protect, portfolio, pro };
+const VIEWS = { home: landing, pro, earn, protect, portfolio };
+// Old links to the retired Trade view land in Pro; an empty hash is the landing.
+const ALIASES = { trade: "pro", "": "home" };
+const route = (hash) => {
+  const h = hash.replace(/^#/, "");
+  const name = ALIASES[h] ?? h;
+  return VIEWS[name] ? name : "home";
+};
 let current = null;
-let currentName = "trade";
+let currentName = null;
 let demoPanel = null;
 
 function header() {
@@ -27,19 +35,37 @@ function header() {
     qpsEl.textContent = "makers offline";
     qpsEl.title = "Backend is not reachable. Start it with: npm run backend";
     qpsEl.className = "pill";
-  } else if (S.quotesPerSec === 0) {
-    qpsEl.textContent = S.closed ? "quoting paused" : "0 quotes/s";
-    qpsEl.title = S.closed ? "Stocks are closed. Makers pause quoting outside market hours." : "No quote updates in the last tick.";
+  } else if (S.liveQuotes > 0) {
+    // Makers keep quoting while stocks are closed; that's the product. Count resting quotes, not the repricing rate.
+    const rate = Math.round(S.quotesPerSec || 0);
+    qpsEl.textContent = `${S.liveQuotes} live quotes`;
+    qpsEl.title = `${S.liveQuotes} maker quotes resting on the onchain book${rate ? `, ${rate} updates/s` : ""}`;
+    qpsEl.className = "pill live";
+  } else if (S.liveQuotes === 0) {
+    qpsEl.textContent = "quoting paused";
+    qpsEl.title = "No maker quotes are on the book right now.";
     qpsEl.className = "pill paused";
   } else {
-    qpsEl.textContent = `${Math.round(S.quotesPerSec)} quotes/s`;
-    qpsEl.title = `${Math.round(S.quotesPerSec)} quote updates per second from active makers`;
-    qpsEl.className = "pill live";
+    // /status unavailable: fall back to the repricing rate from /markets.
+    const rate = Math.round(S.quotesPerSec || 0);
+    qpsEl.textContent = `${rate} quotes/s`;
+    qpsEl.title = "Quote updates per second from active makers";
+    qpsEl.className = rate ? "pill live" : "pill paused";
+  }
+}
+
+/// Resting quote count from the backend's /status (S.liveQuotes). Undefined when it can't be read.
+async function refreshStatus() {
+  try {
+    const j = await (await fetch(`${API_URL}/status`)).json();
+    S.liveQuotes = Number.isFinite(j.liveQuotes) ? j.liveQuotes : undefined;
+  } catch {
+    S.liveQuotes = undefined;
   }
 }
 
 async function refreshAll() {
-  await refreshMarket();
+  await Promise.all([refreshMarket(), refreshStatus()]);
   await loadSeries();
   header();
   renderAccount();
@@ -50,8 +76,15 @@ async function refreshAll() {
 async function show(name) {
   currentName = name;
   $$("#nav button").forEach((b) => b.classList.toggle("on", b.dataset.view === name));
-  current = VIEWS[name]($("#view"), refreshAll);
-  location.hash = name;
+  // A fresh <main> per view: a previous view's in-flight async render keeps writing into its own
+  // detached root instead of hitting nulls in the new one. Views with a full-bleed shell set their own class.
+  const root = document.createElement("main");
+  root.id = "view";
+  $("#view").replaceWith(root);
+  document.body.dataset.view = name;
+  current = VIEWS[name](root, refreshAll);
+  if (location.hash.slice(1) !== name) location.hash = name;
+  window.scrollTo(0, 0);
   await current.render();
 }
 
@@ -65,7 +98,7 @@ async function boot() {
   setErrorAbis(Object.values(ABI).map((a) => new ethers.Interface(a)));
   await initJaw();
   try {
-    await refreshMarket();
+    await Promise.all([refreshMarket(), refreshStatus()]);
     await loadSeries();
   } catch (e) {
     console.error(e);
@@ -80,12 +113,17 @@ async function boot() {
   renderAccount();
   $$("#nav button").forEach((b) => (b.onclick = () => show(b.dataset.view)));
   demoPanel = demo($("#demo"), refreshAll);
-  await show(VIEWS[location.hash.slice(1)] ? location.hash.slice(1) : "trade");
+  await show(route(location.hash)); // the landing at /; the demo itself runs in Pro
+  // The logo and in-page links navigate by hash.
+  window.addEventListener("hashchange", () => {
+    const name = route(location.hash);
+    if (name !== currentName) show(name);
+  });
 
   let n = 0;
   setInterval(async () => {
     try {
-      await refreshMarket();
+      await Promise.all([refreshMarket(), refreshStatus()]);
       header();
       n++;
       if (n % 6 === 0) {
