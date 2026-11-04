@@ -15,6 +15,7 @@
 //   KURU_ACCOUNT_CORE Kuru AccountCore. With KURU_MARKETS, deploys KuruAdapter as the hedge venue (unless DEX_ROUTER
 //                     is set), centres spots and strikes on Kuru's mid prices, and records each market for the backend
 //   KURU_MARKETS      "NVDAx=0x..,TSLAx=0x..,SPYx=0x.." Kuru stock/USDC markets
+//   DEPLOY_STOCKS     "NVDAx" or "NVDAx,TSLAx": deploy only these stocks (default all three; each costs ~3.5 MON of gas on testnet)
 //   HOOK_GAS          fill-hook gas budget (default 1,000,000 with Kuru: a hedge there is ~430k-490k gas)
 const fs = require("fs");
 const path = require("path");
@@ -131,7 +132,8 @@ async function main() {
   const pythIds = parseMap(process.env.PYTH_IDS);
   const multSource = parseMap(process.env.MULTIPLIER_SOURCES); // SYMBOL=contract exposing multiplier()
   const stocks = [];
-  for (const st of STOCKS) {
+  const only = (process.env.DEPLOY_STOCKS || "").split(",").map((x) => x.trim()).filter(Boolean);
+  for (const st of STOCKS.filter((x) => !only.length || only.includes(x.symbol))) {
     const addr = real[st.symbol] || (await (await F("MockXStock", st.name, st.symbol, deployer.address)).getAddress());
     const kuruMarket = kuruMarkets[st.symbol] || null;
     const spot = kuruMarket ? await kuruMid(kuruMarket) : st.spot; // strikes centre on the price being hedged
