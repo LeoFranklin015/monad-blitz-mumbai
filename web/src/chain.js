@@ -138,6 +138,11 @@ export async function refreshMarket() {
   } catch { /* keep cached */ }
 }
 
+/// Native gas balance (wei) for an address.
+export const nativeBalance = (addr) => read.getBalance(addr);
+/// Native gas token symbol for the current chain.
+export const nativeSymbol = () => (D && [143, 10143].includes(D.chainId) ? "MON" : "ETH");
+
 export const liveSeries = (stock) => S.series.filter((s) => s.stock === stock && s.expiry > S.now);
 export const expiriesOf = (stock) => [...new Set(liveSeries(stock).map((s) => s.expiry))].sort((a, b) => a - b);
 export const seriesById = (id) => S.series.find((s) => s.id === id);

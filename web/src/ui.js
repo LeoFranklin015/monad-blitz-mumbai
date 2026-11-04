@@ -1,3 +1,5 @@
+import { meraMessage } from "./mera.js";
+
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -57,6 +59,8 @@ function revertData(e) {
   return e?.data || e?.info?.error?.data?.data || e?.info?.error?.data || e?.error?.data || null;
 }
 export function errMsg(e) {
+  const mera = meraMessage(e);
+  if (mera) return mera;
   const data = revertData(e);
   if (typeof data === "string" && data.length >= 10) {
     for (const d of decoders) {
