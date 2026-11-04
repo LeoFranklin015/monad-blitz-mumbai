@@ -22,7 +22,14 @@ export function portfolio(root, refreshAll) {
       return;
     }
     const p = C.protocol();
-    const bals = await Promise.all(S.series.map((s) => C.token(s.token).balanceOf(W.address)));
+    const bals = new Array(S.series.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, S.series.length) }, async () => {
+      while (next < S.series.length) {
+        const i = next++;
+        bals[i] = await C.token(S.series[i].token).balanceOf(W.address);
+      }
+    }));
     const held = S.series.map((s, i) => ({ s, bal: bals[i] })).filter((x) => x.bal > 0n);
     const rows = await Promise.all(held.map(async ({ s, bal }) => {
       const n = fromSh(bal);

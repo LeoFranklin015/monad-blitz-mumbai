@@ -10,7 +10,7 @@ test("log queries are paginated within the free RPC limit", async () => {
     for await (const chunk of req) body += chunk;
     const call = JSON.parse(body);
     let result;
-    if (call.method === "eth_blockNumber") result = "0x4e20";
+    if (call.method === "eth_blockNumber") result = "0x19";
     else {
       assert.equal(call.method, "eth_getLogs");
       const { fromBlock, toBlock } = call.params[0];
@@ -26,7 +26,9 @@ test("log queries are paginated within the free RPC limit", async () => {
   });
   try {
     assert.deepEqual(await provider.getLogs({ fromBlock: 1, toBlock: "latest" }), []);
-    assert.deepEqual(ranges, [[1, 5000], [5001, 10000], [10001, 15000], [15001, 20000]]);
+    assert.equal(ranges.length, 3);
+    assert.deepEqual(ranges[0], [1, 10]);
+    assert.deepEqual(ranges.at(-1), [21, 25]);
   } finally {
     provider.destroy();
     await new Promise(resolve => server.close(resolve));

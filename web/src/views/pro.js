@@ -983,6 +983,22 @@ export function pro(root, refreshAll) {
   async function refreshTradeHistory() {
     if (!W.address) return;
     try {
+      const response = await fetch(`${API_URL}/trades?address=${encodeURIComponent(W.address)}`);
+      if (response.ok) {
+        const { trades = [] } = await response.json();
+        tradeHistoryCache = trades.map((trade) => ({
+          e: {
+            blockNumber: trade.blockNumber,
+            args: {
+              seriesId: BigInt(trade.seriesId), buyer: trade.buyer, seller: trade.seller,
+              amount: BigInt(trade.amount), price: BigInt(trade.price),
+            },
+          },
+          isBuy: trade.buyer.toLowerCase() === W.address.toLowerCase(),
+          isRfq: trade.via === "rfq",
+        }));
+        return;
+      }
       const proto = C.protocol();
       const latest = await read.getBlockNumber();
       const fromBlock = Math.max(0, Number(latest) - 1000);

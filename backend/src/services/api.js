@@ -10,7 +10,7 @@
 import http from "node:http";
 import { ethers } from "ethers";
 import { D, config, KIND, NETWORK } from "../config.js";
-import { contracts, usdTo, shTo, usdFrom, shFrom, log } from "../lib/chain.js";
+import { contracts, provider, usdTo, shTo, usdFrom, shFrom, log } from "../lib/chain.js";
 import { state } from "../lib/market.js";
 import { metrics } from "../lib/obs.js";
 import { index } from "../lib/indexer.js";
@@ -48,7 +48,11 @@ export function startApi() {
   const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin || "";
     const allow = config.corsOrigins.includes("*") ? "*" : config.corsOrigins.includes(origin) ? origin : "";
-    if (allow) res.setHeader("Access-Control-Allow-Origin", allow);
+    if (allow) {
+      res.setHeader("Access-Control-Allow-Origin", allow);
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    }
     res.setHeader("Vary", "Origin");
     const url = new URL(req.url, "http://x");
     const reply = (code, body, type = "application/json") => {
@@ -60,6 +64,21 @@ export function startApi() {
     const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
     try {
       if (req.method === "OPTIONS") return reply(204, "");
+      if (url.pathname === "/rpc" && req.method === "POST") {
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > 1_000_000) return reply(413, { error: "RPC request too large" });
+        }
+        const upstream = await fetch(config.rpc, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        });
+        res.statusCode = upstream.status;
+        res.setHeader("Content-Type", "application/json");
+        return res.end(await upstream.text());
+      }
       if (url.pathname === "/health") {
         const age = (Date.now() - state.updatedAt) / 1000;
         return reply(age < 30 ? 200 : 503, { ok: age < 30, network: NETWORK, marketAgeSec: Math.round(age) });
@@ -78,6 +97,55 @@ export function startApi() {
           liveQuotes: stats.liveQuotes,
           quotesPerSec: stats.quotesPerSec,
         });
+      }
+      if (url.pathname === "/trades") {
+        const address = url.searchParams.get("address");
+        if (!ethers.isAddress(address)) return reply(400, { error: "valid address required" });
+        const latest = await provider.getBlockNumber();
+        const requested = Number(url.searchParams.get("blocks") || 2_000);
+        const blocks = Math.min(Math.max(Number.isFinite(requested) ? requested : 2_000, 100), 10_000);
+        const minBlock = Math.max(Number(D.deployBlock || 0), latest - blocks + 1);
+        const addr = ethers.getAddress(address);
+        const topics = [[
+          protocol.interface.getEvent("Filled").topicHash,
+          protocol.interface.getEvent("RFQFilled").topicHash,
+        ]];
+        const matching = [];
+        let fromBlock = latest;
+        for (let toBlock = latest; toBlock >= minBlock; toBlock -= 100) {
+          fromBlock = Math.max(minBlock, toBlock - 99);
+          const page = await provider.getLogs({ address: D.protocol, topics, fromBlock, toBlock });
+          for (const log of page) {
+            const event = protocol.interface.parseLog(log);
+            const seller = event.args.seller || event.args.maker;
+            if (event.args.buyer.toLowerCase() === addr.toLowerCase() || seller.toLowerCase() === addr.toLowerCase()) {
+              matching.push({ log, event });
+            }
+          }
+          if (matching.length) break;
+        }
+        const seen = new Set();
+        const trades = matching
+          .filter(({ log }) => {
+            const key = `${log.transactionHash}:${log.index}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .sort((a, b) => b.log.blockNumber - a.log.blockNumber)
+          .slice(0, 50)
+          .map(({ log, event }) => ({
+            transactionHash: log.transactionHash,
+            logIndex: log.index,
+            blockNumber: log.blockNumber,
+            seriesId: Number(event.args.seriesId),
+            seller: event.args.seller || event.args.maker,
+            buyer: event.args.buyer,
+            amount: event.args.amount,
+            price: event.args.price,
+            via: event.fragment.name === "RFQFilled" ? "rfq" : "book",
+          }));
+        return reply(200, { fromBlock, latest, trades });
       }
       if (url.pathname === "/metrics") return reply(200, metrics.text(), "text/plain; version=0.0.4");
 

@@ -1,5 +1,5 @@
 import { ethers } from "ethers";
-import { NETWORK, API_URL } from "./config.js";
+import { NETWORK, API_URL, RPC_URL } from "./config.js";
 
 export let D = null;
 export let ABI = null;
@@ -31,7 +31,7 @@ export async function load() {
   if (!d || !a) throw new Error(`No deployment for "${NETWORK}". Run the deploy script first.`);
   D = d;
   ABI = a;
-  const rpc = D.chainId === 31337 ? `http://${location.hostname}:8545` : (D.rpc.startsWith("/") ? location.origin + D.rpc : D.rpc);
+  const rpc = D.chainId === 31337 ? `http://${location.hostname}:8545` : RPC_URL;
   // Monad testnet RPCs choke on large batches ("queue size exceeded"); keep batches small.
   read = new ethers.JsonRpcProvider(rpc, D.chainId, { staticNetwork: true, batchMaxCount: 5 });
   S.stock = D.stocks[0];
